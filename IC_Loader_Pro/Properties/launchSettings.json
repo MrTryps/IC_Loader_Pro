@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "IC_Loader_Pro": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files\\ArcGIS\\Pro\\bin\\ArcGISPro.exe"
+    }
+  }
+}

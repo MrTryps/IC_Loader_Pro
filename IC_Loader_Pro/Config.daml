@@ -1,0 +1,45 @@
+﻿<ArcGIS defaultAssembly="IC_Loader_Pro.dll" defaultNamespace="IC_Loader_Pro" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
+  <AddInInfo id="{7969ded4-caa1-462c-aba5-b5b886fe9a19}" version="1.0" desktopVersion="3.2.49743">
+    <Name>IC_Loader_Pro</Name>
+    <Description>IC_Loader_Pro description</Description>
+    <Image>Images\AddinDesktop32.png</Image>
+    <Author>mrmoore</Author>
+    <Company>NJDEP</Company>
+    <Date>4/24/2025 3:57:00 PM</Date>
+    <Subject>Framework</Subject>
+    <!-- Note subject can be one or more of these topics:
+                    Content, Framework, Editing, Geodatabase, Geometry, Geoprocessing, Layouts, Map Authoring, Map Exploration -->
+  </AddInInfo>
+  <modules>
+    <insertModule id="IC_Loader_Pro_Module" className="Module1" autoLoad="false" caption="Module1">
+      <!-- uncomment to have the control hosted on a separate tab-->
+      <tabs>
+        <!--<tab id="IC_Loader_Pro_Tab1" caption="New Tab">
+          <group refID="IC_Loader_Pro_Group1"/>
+        </tab>-->
+      </tabs>
+      <groups>
+        <!-- comment this out if you have no controls on the Addin tab to avoid
+              an empty group-->
+        <group id="IC_Loader_Pro_Group1" caption="Group 1" appearsOnAddInTab="true">
+          <!-- host controls within groups -->
+          <button refID="IC_Loader_Pro_IC_Load" size="large" />
+          <button refID="IC_Loader_Pro_frm_Show_Ics_to_Load" size="large" />
+          <button refID="IC_Loader_Pro_ProWfrm_LoadICs" size="large" />
+        </group>
+      </groups>
+      <controls>
+        <!-- add your controls here -->
+        <button id="IC_Loader_Pro_IC_Load" caption="IC _Load" className="IC_Load" loadOnClick="true" smallImage="GenericButtonBlue16" largeImage="GenericButtonBlue32">
+          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        </button>
+        <button id="IC_Loader_Pro_frm_Show_Ics_to_Load" caption="frm _Show_Ics_to_Load" className="Showfrm_Show_Ics_to_Load" loadOnClick="true" smallImage="GenericButtonPurple16" largeImage="GenericButtonPurple32">
+          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        </button>
+        <button id="IC_Loader_Pro_ProWfrm_LoadICs" caption="ProWfrm _LoadICs" className="ShowProWfrm_LoadICs" loadOnClick="true" smallImage="GenericButtonPurple16" largeImage="GenericButtonPurple32">
+          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        </button>
+      </controls>
+    </insertModule>
+  </modules>
+</ArcGIS>
