@@ -4,6 +4,7 @@ using ArcGIS.Desktop.Framework.Dialogs;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Input;
+using B
 
 
 namespace IC_Loader_Pro
@@ -12,6 +13,7 @@ namespace IC_Loader_Pro
     internal class Dockpane_IC_LoaderViewModel : DockPane
     {
         private const string _dockPaneID = "IC_Loader_Pro_Dockpane_IC_Loader";
+        private const string justChangingTheCode = "";
 
         #region Properties
         public ObservableCollection<Models.ICQueueInfo> ICQueues { get; } = new ObservableCollection<Models.ICQueueInfo>();
