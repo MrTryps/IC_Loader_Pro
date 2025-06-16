@@ -13,14 +13,15 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
+
 namespace IC_Loader_Pro
 {
     /// <summary>
-    /// Interaction logic for frm_Show_Ics_to_Load.xaml
+    /// Interaction logic for Dockpane_IC_LoaderView.xaml
     /// </summary>
-    public partial class frm_Show_Ics_to_Load : ArcGIS.Desktop.Framework.Controls.ProWindow
+    public partial class Dockpane_IC_LoaderView : UserControl
     {
-        public frm_Show_Ics_to_Load()
+        public Dockpane_IC_LoaderView()
         {
             InitializeComponent();
         }

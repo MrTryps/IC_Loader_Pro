@@ -21,25 +21,22 @@
       <groups>
         <!-- comment this out if you have no controls on the Addin tab to avoid
               an empty group-->
-        <group id="IC_Loader_Pro_Group1" caption="Group 1" appearsOnAddInTab="true">
+        <group id="IC_Loader_Pro_Group1" caption="IC_Tools_2025" appearsOnAddInTab="true">
           <!-- host controls within groups -->
-          <button refID="IC_Loader_Pro_IC_Load" size="large" />
-          <button refID="IC_Loader_Pro_frm_Show_Ics_to_Load" size="large" />
-          <button refID="IC_Loader_Pro_ProWfrm_LoadICs" size="large" />
+          <button refID="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" size="large" />
         </group>
       </groups>
       <controls>
         <!-- add your controls here -->
-        <button id="IC_Loader_Pro_IC_Load" caption="IC _Load" className="IC_Load" loadOnClick="true" smallImage="GenericButtonBlue16" largeImage="GenericButtonBlue32">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
-        </button>
-        <button id="IC_Loader_Pro_frm_Show_Ics_to_Load" caption="frm _Show_Ics_to_Load" className="Showfrm_Show_Ics_to_Load" loadOnClick="true" smallImage="GenericButtonPurple16" largeImage="GenericButtonPurple32">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
-        </button>
-        <button id="IC_Loader_Pro_ProWfrm_LoadICs" caption="ProWfrm _LoadICs" className="ShowProWfrm_LoadICs" loadOnClick="true" smallImage="GenericButtonPurple16" largeImage="GenericButtonPurple32">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" caption="Show Dockpane _IC_Loader" className="Dockpane_IC_Loader_ShowButton" loadOnClick="true"  smallImage="Images\IC_LoadTool_16.png" largeImage="Images\IC_LoadTool_32.png">
+          <tooltip heading="Show Dockpane">Show Dockpane<disabledText /></tooltip>
         </button>
       </controls>
+      <dockPanes>
+        <dockPane id="IC_Loader_Pro_Dockpane_IC_Loader" caption="Dockpane _IC_Loader" className="Dockpane_IC_LoaderViewModel" dock="group" dockWith="esri_core_projectDockPane">
+          <content className="Dockpane_IC_LoaderView" />
+        </dockPane>
+      </dockPanes>
     </insertModule>
   </modules>
 </ArcGIS>
