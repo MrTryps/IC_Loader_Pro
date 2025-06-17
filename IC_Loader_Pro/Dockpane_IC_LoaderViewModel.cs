@@ -96,9 +96,16 @@ namespace IC_Loader_Pro
                 _isInitialized = true;
             }
 
+            this.Content = new Dockpane_IC_LoaderView();
+
             SaveCommand = new RelayCommand(() => OnSave(), () => IsUIEnabled);
             SkipCommand = new RelayCommand(() => OnSkip(), () => IsUIEnabled);
             RejectCommand = new RelayCommand(() => OnReject(), () => IsUIEnabled);
+            ShowNotesCommand = new RelayCommand(() => OnShowNotes(), () => IsUIEnabled);
+            SearchCommand = new RelayCommand(() => OnSearch(), () => IsUIEnabled);
+            ToolsCommand = new RelayCommand(() => OnTools(), () => IsUIEnabled);
+
+
 
             Log.recordMessage("Initializing Dockpane...", Bis_Log_Message_Type.Note);
 
@@ -125,6 +132,8 @@ namespace IC_Loader_Pro
 
                 // Ensure our special "manually_added" scratch layer is ready.
                 await EnsureManualAddLayerExistsAsync(activeMap);
+
+                LoadSampleICQueueData();
 
                 Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);
             }
@@ -252,5 +261,29 @@ namespace IC_Loader_Pro
                 }
             });
         }
+
+        private void LoadSampleICQueueData()
+        {
+            // It's good practice to clear the list first to prevent duplicates
+            // if this method were ever called more than once.
+            ICQueues.Clear();
+
+            // Create and add some sample ICQueueInfo objects to the collection.
+            // The UI will create one button for each item added here.
+            ICQueues.Add(new Models.ICQueueInfo { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+            ICQueues.Add(new Models.ICQueueInfo { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+            ICQueues.Add(new Models.ICQueueInfo { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+
+            // Set a default selection so the first button is active when the pane opens.
+            SelectedQueue = ICQueues.FirstOrDefault();
+
+            CurrentEmail = new Models.ActiveEmail
+            {
+                Subject = "FW: Institutional Control Submission - Site 123",
+                PrefID = "g0000355",
+                DelID = "gIS_1234"
+            };
+        }
+
     }
 }

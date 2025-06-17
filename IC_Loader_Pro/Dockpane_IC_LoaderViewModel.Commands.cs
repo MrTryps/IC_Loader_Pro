@@ -17,10 +17,10 @@ namespace IC_Loader_Pro
         public ICommand SaveCommand { get; private set; }
         public ICommand SkipCommand { get; private set; }
         public ICommand RejectCommand { get; private set; }
-        public ICommand ShowNotesCommand { get; }
-        public ICommand SearchCommand { get; }
-        public ICommand ToolsCommand { get; }
-        public ICommand OptionsCommand { get; }
+        public ICommand ShowNotesCommand { get; private set; }
+        public ICommand SearchCommand { get; private set; }
+        public ICommand ToolsCommand { get; private set; }
+        public ICommand OptionsCommand { get; private set; }
         #endregion
 
         #region Command Methods
@@ -47,6 +47,50 @@ namespace IC_Loader_Pro
         {
             Log.recordMessage("Reject button was clicked.", Bis_Log_Message_Type.Note);
             await Task.CompletedTask;
+        }
+
+        private async Task OnShowNotes()
+        {
+            Log.recordMessage("ShowNotes Menu was clicked.", Bis_Log_Message_Type.Note);
+
+            // We can now use 'await' here for any async GIS work in the future,
+            // for example, saving features to the 'manually_added' layer.
+            await QueuedTask.Run(() => {
+                // ... future GIS logic ...
+            });
+        }
+
+        private async Task OnSearch()
+        {
+            Log.recordMessage("Search Menu was clicked.", Bis_Log_Message_Type.Note);
+
+            // We can now use 'await' here for any async GIS work in the future,
+            // for example, saving features to the 'manually_added' layer.
+            await QueuedTask.Run(() => {
+                // ... future GIS logic ...
+            });
+        }
+
+        private async Task OnTools()
+        {
+            Log.recordMessage("Tools Menu was clicked.", Bis_Log_Message_Type.Note);
+
+            // We can now use 'await' here for any async GIS work in the future,
+            // for example, saving features to the 'manually_added' layer.
+            await QueuedTask.Run(() => {
+                // ... future GIS logic ...
+            });
+        }
+
+        private async Task OnOptions()
+        {
+            Log.recordMessage("Options Menu was clicked.", Bis_Log_Message_Type.Note);
+
+            // We can now use 'await' here for any async GIS work in the future,
+            // for example, saving features to the 'manually_added' layer.
+            await QueuedTask.Run(() => {
+                // ... future GIS logic ...
+            });
         }
 
         #endregion
