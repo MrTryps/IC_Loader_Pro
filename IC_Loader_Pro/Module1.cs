@@ -27,7 +27,7 @@ namespace IC_Loader_Pro
     internal class Module1 : Module
     {
         private static Module1 _this = null;
-        private static BIS_Log Log;
+        private static BIS_Log _Log;
         private static IC_Rules IC_Rules = null;
         private static BIS_DB_Tools.BIS_DB_PostGre PostGreTool = null;
 
@@ -37,7 +37,7 @@ namespace IC_Loader_Pro
         /// 
 
         public static Module1 Current => _this ??= (Module1)FrameworkApplication.FindModule("IC_Loader_Pro_Module");
-        public static BIS_Log _Log => Log ??= new BIS_Log("IC_Loader_Pro");
+        public static BIS_Log Log => _Log ??= new BIS_Log("IC_Loader_Pro");
         public static IC_Rules _IC_Rules => IC_Rules ??= new IC_Rules(Log);
         public static BIS_DB_Tools.BIS_DB_PostGre _PostGreTool => PostGreTool ??= new BIS_DB_Tools.BIS_DB_PostGre(Log);
 
