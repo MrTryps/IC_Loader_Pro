@@ -12,19 +12,45 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using System.Windows.Input;
 using static BIS_Tools_2025_Core.BIS_Log;
 using static IC_Loader_Pro.Module1;
 
 namespace IC_Loader_Pro
 {
-    internal class Dockpane_IC_LoaderViewModel : DockPane
+    internal partial class Dockpane_IC_LoaderViewModel : DockPane
     {
         private bool _isInitialized = false;
         private FeatureLayer _manualAddLayer = null;
         private readonly object _lock = new object();
         public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
 
-        // All other UI properties (ICQueues, SelectedQueue, etc.) will go here later
+        #region UI Properties
+
+        private bool _isUIEnabled = false;
+        /// <summary>
+        /// Controls whether the main UI controls are enabled.
+        /// The buttons' CanExecute condition is bound to this property.
+        /// </summary>
+        public bool IsUIEnabled
+        {
+            get => _isUIEnabled;
+            set => SetProperty(ref _isUIEnabled, value);
+        }
+
+        private string _statusMessage = "Please open or create a project to begin.";
+        /// <summary>
+        /// A message displayed to the user at the top of the dockpane.
+        /// </summary>
+        public string StatusMessage
+        {
+            get => _statusMessage;
+            set => SetProperty(ref _statusMessage, value);
+        }
+
+        // ... your other UI properties like ICQueues, SelectedQueue, etc. go here ...
+
+        #endregion
 
         internal static void Show()
         {
@@ -51,6 +77,10 @@ namespace IC_Loader_Pro
                     return;
                 _isInitialized = true;
             }
+
+            SaveCommand = new RelayCommand(() => OnSave(), () => IsUIEnabled);
+            SkipCommand = new RelayCommand(() => OnSkip(), () => IsUIEnabled);
+            RejectCommand = new RelayCommand(() => OnReject(), () => IsUIEnabled);
 
             Log.recordMessage("Initializing Dockpane...", Bis_Log_Message_Type.Note);
 
