@@ -267,13 +267,13 @@ namespace IC_Loader_Pro
             // It's good practice to clear the list first to prevent duplicates
             // if this method were ever called more than once.
             ICQueues.Clear();
-
+            Log.recordMessage("Setting up ICQueues", Bis_Log_Message_Type.Note);
             // Create and add some sample ICQueueInfo objects to the collection.
             // The UI will create one button for each item added here.
             ICQueues.Add(new Models.ICQueueInfo { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
             ICQueues.Add(new Models.ICQueueInfo { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
             ICQueues.Add(new Models.ICQueueInfo { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-
+            Log.recordMessage($"{ICQueues.Count} ICQueues loaded.", Bis_Log_Message_Type.Note);
             // Set a default selection so the first button is active when the pane opens.
             SelectedQueue = ICQueues.FirstOrDefault();
 

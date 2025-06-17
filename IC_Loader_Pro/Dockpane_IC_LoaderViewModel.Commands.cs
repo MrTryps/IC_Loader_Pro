@@ -49,7 +49,7 @@ namespace IC_Loader_Pro
             await Task.CompletedTask;
         }
 
-        private async Task OnShowNotes()
+        static private async Task OnShowNotes()
         {
             Log.recordMessage("ShowNotes Menu was clicked.", Bis_Log_Message_Type.Note);
 
