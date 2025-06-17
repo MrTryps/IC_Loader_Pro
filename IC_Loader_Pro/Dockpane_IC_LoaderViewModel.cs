@@ -8,6 +8,7 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using IC_Loader_Pro.Models;
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -20,12 +21,29 @@ namespace IC_Loader_Pro
 {
     internal partial class Dockpane_IC_LoaderViewModel : DockPane
     {
-        private bool _isInitialized = false;
-        private FeatureLayer _manualAddLayer = null;
-        private readonly object _lock = new object();
         public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
+        private bool _isInitialized = false;
+        private readonly object _lock = new object();
+        private FeatureLayer _manualAddLayer = null;
+
+        public ObservableCollection<ICQueueInfo> ICQueues { get; } = new ObservableCollection<ICQueueInfo>();
+
 
         #region UI Properties
+        private ICQueueInfo _selectedQueue;
+        public ICQueueInfo SelectedQueue
+        {
+            get => _selectedQueue;
+            set => SetProperty(ref _selectedQueue, value, () => SelectedQueue);
+        }
+
+        private ActiveEmail _currentEmail;
+        public ActiveEmail CurrentEmail
+        {
+            get => _currentEmail;
+            set => SetProperty(ref _currentEmail, value, () => CurrentEmail);
+        }
+
 
         private bool _isUIEnabled = false;
         /// <summary>

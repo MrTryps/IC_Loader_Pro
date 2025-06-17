@@ -17,6 +17,10 @@ namespace IC_Loader_Pro
         public ICommand SaveCommand { get; private set; }
         public ICommand SkipCommand { get; private set; }
         public ICommand RejectCommand { get; private set; }
+        public ICommand ShowNotesCommand { get; }
+        public ICommand SearchCommand { get; }
+        public ICommand ToolsCommand { get; }
+        public ICommand OptionsCommand { get; }
         #endregion
 
         #region Command Methods
