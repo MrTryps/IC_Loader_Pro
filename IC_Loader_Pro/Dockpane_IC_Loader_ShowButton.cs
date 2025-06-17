@@ -11,20 +11,19 @@ namespace IC_Loader_Pro
     /// </summary>
     internal class Dockpane_IC_Loader_ShowButton : Button
     {
+        public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
         protected override void OnClick()
         {
-            string dockpaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
-            Pane pane = FrameworkApplication.Panes.Find(dockpaneId)?.FirstOrDefault();
-            if (pane == null)
-            {
-                // This should not happen, as the framework creates the pane based on the DAML.
-                // We will log an error if the pane can't be found.
-                Log.recordError($"Could not find dockpane with ID '{dockpaneId}'. Check Config.daml.", null, "ShowButton.OnClick");
-                return;
-            }
+            // 1. Call the static method to ensure the pane is visible and active.
+            Dockpane_IC_LoaderViewModel.Show();
 
-            // Activate the dockpane to make it visible and bring it to the front.
-            pane.Activate();
+            // 2. Find the ViewModel instance so we can call our one-time initialization method.
+            var vm = FrameworkApplication.DockPaneManager.Find(Dockpane_IC_LoaderViewModel.DockPaneId) as Dockpane_IC_LoaderViewModel;
+            if (vm != null)
+            {
+                // This triggers the logic to check/create the map and layers.
+                _ = vm.LoadAndInitializeAsync();
+            }
         }
     }
 }

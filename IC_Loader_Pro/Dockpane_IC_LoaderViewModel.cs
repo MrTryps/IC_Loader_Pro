@@ -2,6 +2,7 @@
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Core.Geoprocessing;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
@@ -10,6 +11,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 using static BIS_Tools_2025_Core.BIS_Log;
 using static IC_Loader_Pro.Module1;
 
@@ -20,8 +22,21 @@ namespace IC_Loader_Pro
         private bool _isInitialized = false;
         private FeatureLayer _manualAddLayer = null;
         private readonly object _lock = new object();
+        public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
 
         // All other UI properties (ICQueues, SelectedQueue, etc.) will go here later
+
+        internal static void Show()
+        {
+            // Use the DockPaneManager to find the pane. This is the correct method.
+            var pane = FrameworkApplication.DockPaneManager.Find(DockPaneId);
+            if (pane == null)
+                return;
+
+            pane.Activate();
+        }
+
+
 
         /// <summary>
         /// This is the single entry point for our setup logic.
