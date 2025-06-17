@@ -27,3 +27,4 @@ namespace IC_Loader_Pro
         }
     }
 }
+//System.Windows.Markup.XamlParseException: ''Provide value on 'System.Windows.Baml2006.TypeConverterMarkupExtension' threw an exception.' Line number '47' and line position '43'.'

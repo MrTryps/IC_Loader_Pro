@@ -7,6 +7,7 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <NoWarn>CA1416</NoWarn>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Images\IC_LoadTool_16.png" />
@@ -107,9 +108,6 @@
     </Reference>
     <Reference Include="BIS_Deliverable_DataAndTests">
       <HintPath>..\..\..\MostCurrentDlls\BIS_Deliverable_DataAndTests.dll</HintPath>
-    </Reference>
-    <Reference Include="BIS_IC_InputClasses_2025">
-      <HintPath>..\..\..\BIS_Tools_2025\BIS_IC_InputClasses_2025\BIS_IC_InputClasses_2025\BIS_IC_InputClasses_2025\bin\Debug\net6.0-windows\BIS_IC_InputClasses_2025.dll</HintPath>
     </Reference>
     <Reference Include="BIS_Tools_2025_Core">
       <HintPath>..\..\..\..\..\2025_Dlls\net6.0\BIS_Tools_2025_Core.dll</HintPath>

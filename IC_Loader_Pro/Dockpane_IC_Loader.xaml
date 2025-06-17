@@ -106,7 +106,29 @@
         <Separator Grid.Row="3" Margin="0,5"/>
 
         <Grid Grid.Row="4">
-            <TextBlock Text="Main Content Area" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" Foreground="{DynamicResource Esri_Gray80Brush}"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <GroupBox Grid.Column="0" Header="Shapes to Review" Margin="0,0,2,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                        <CheckBox Content="Show Valid" IsChecked="{Binding ShowValid}" Margin="0,0,10,0"/>
+                        <CheckBox Content="Show Invalid" IsChecked="{Binding ShowInvalid}" Margin="0,0,10,0"/>
+                    </StackPanel>
+                    <ListView ItemsSource="{Binding ShapesToReview}" SelectedItem="{Binding SelectedShapeForReview}">
+                    </ListView>
+                </DockPanel>
+            </GroupBox>
+
+            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" Background="{DynamicResource Esri_BackgroundBrush}"/>
+
+            <GroupBox Grid.Column="2" Header="Selected Shapes to Use" Margin="2,0,0,0">
+                <ListView ItemsSource="{Binding SelectedShapes}" SelectedItem="{Binding SelectedShapeForUse}">
+                </ListView>
+            </GroupBox>
         </Grid>
 
     </Grid>
