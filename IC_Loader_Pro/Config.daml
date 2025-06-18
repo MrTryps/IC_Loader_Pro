@@ -28,12 +28,23 @@
       </groups>
       <controls>
         <!-- add your controls here -->
-        <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" caption="Show Dockpane _IC_Loader" className="Dockpane_IC_Loader_ShowButton" loadOnClick="true"  smallImage="Images\IC_LoadTool_16.png" largeImage="Images\IC_LoadTool_32.png">
+        <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" 
+                caption="Show Dockpane _IC_Loader" 
+                className="Dockpane_IC_Loader_ShowButton" 
+                loadOnClick="true"  
+                smallImage="Images\IC_LoadTool_16.png" 
+                largeImage="Images\IC_LoadTool_32.png"
+                condition="map_active">
           <tooltip heading="Show Dockpane">Show Dockpane<disabledText /></tooltip>
         </button>
       </controls>
       <dockPanes>
-        <dockPane id="IC_Loader_Pro_Dockpane_IC_Loader" caption="Dockpane _IC_Loader" className="Dockpane_IC_LoaderViewModel" dock="group" dockWith="esri_core_projectDockPane">
+        <dockPane id="IC_Loader_Pro_Dockpane_IC_Loader" 
+                  caption="Dockpane _IC_Loader" 
+                  className="Dockpane_IC_LoaderViewModel" 
+                  dock="group" 
+                  dockWith="esri_core_projectDockPane"
+                  condition="map_active">
           <content className="Dockpane_IC_LoaderView" />
         </dockPane>
       </dockPanes>

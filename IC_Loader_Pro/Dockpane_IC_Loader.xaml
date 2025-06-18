@@ -3,47 +3,24 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:ui="clr-namespace:IC_Loader_Pro"
              xmlns:extensions="clr-namespace:ArcGIS.Desktop.Extensions;assembly=ArcGIS.Desktop.Extensions"
              mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800"
+             d:DesignHeight="700" d:DesignWidth="800"
              d:DataContext="{Binding Path=ui.Dockpane_IC_LoaderViewModel}"
              Background="{DynamicResource Esri_BackgroundBrush}">
 
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="pack://application:,,,/ArcGIS.Desktop.Framework;component/Themes/Default.xaml"/>
+                <extensions:DesignOnlyResourceDictionary Source="pack://application:,,,/ArcGIS.Desktop.Framework;component\Themes\Default.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-
-        <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <Menu Grid.Column="0" VerticalAlignment="Center" Background="Transparent">
-                <MenuItem Header="_Notes" Command="{Binding ShowNotesCommand}"/>
-                <MenuItem Header="_Search" Command="{Binding SearchCommand}"/>
-                <MenuItem Header="_Tools" Command="{Binding ToolsCommand}"/>
-                <MenuItem Header="_Options" Command="{Binding OptionsCommand}"/>
-            </Menu>
-
-            <ListBox Grid.Column="1" ItemsSource="{Binding ICQueues}" 
-                     SelectedItem="{Binding SelectedQueue, Mode=TwoWay}"
-                     BorderThickness="0" Background="Transparent"
-                     VerticalAlignment="Center">
+    <Grid>
+        <DockPanel Margin="5">
+            <TextBlock DockPanel.Dock="Top" Text="IC Queues" FontWeight="Bold"/>
+            <ListBox DockPanel.Dock="Top" ItemsSource="{Binding ICQueues}" SelectedItem="{Binding SelectedQueue}">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal"/>
@@ -51,85 +28,22 @@
                 </ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" Margin="2,0">
-                            <ToggleButton.IsChecked>
-                                <Binding Path="IsSelected" RelativeSource="{RelativeSource AncestorType=ListBoxItem}" Mode="TwoWay"/>
-                            </ToggleButton.IsChecked>
-                            <ToggleButton.Content>
-                                <TextBlock>
-                                    <Run Text="{Binding Name}"/>
-                                    <Run Text="{Binding EmailCount, StringFormat=' ({0})'}"/>
-                                </TextBlock>
-                            </ToggleButton.Content>
+                        <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" Margin="2,5"
+                                      IsChecked="{Binding Path=IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Name}"/>
+                                <TextBlock Text="{Binding EmailCount, StringFormat=' ({0})'}"/>
+                            </StackPanel>
                         </ToggleButton>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <ContentPresenter/>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
             </ListBox>
-        </Grid>
 
-        <Separator Grid.Row="1" Margin="0,5"/>
-
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <TextBlock Grid.Column="0" Text="{Binding CurrentEmail.Subject, FallbackValue='Email Subject Line'}" VerticalAlignment="Center" FontWeight="Bold" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentEmail.Subject}"/>
-
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="Pref ID:" Margin="15,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
-                <TextBlock Text="{Binding CurrentEmail.PrefID, FallbackValue='g0000355'}" Margin="0,0,15,0"/>
-                <TextBlock Text="Del ID:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
-                <TextBlock Text="{Binding CurrentEmail.DelID, FallbackValue='gIS_1234'}" Margin="0,0,15,0"/>
-
-                <TextBlock Text="Passed:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
-                <TextBlock Text="{Binding PassedCount, FallbackValue='11'}" Margin="0,0,15,0"/>
-                <TextBlock Text="Skipped:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
-                <TextBlock Text="{Binding SkippedCount, FallbackValue='2'}" Margin="0,0,15,0"/>
-                <TextBlock Text="Failed:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
-                <TextBlock Text="{Binding FailedCount, FallbackValue='10'}"/>
+            <TextBlock Text="Selected Queue Details" DockPanel.Dock="Top" Margin="0,10,0,0" FontWeight="Bold"/>
+            <StackPanel DockPanel.Dock="Top">
+                <TextBlock Text="{Binding SelectedQueue.Name, StringFormat='Name: {0}', FallbackValue='Name: (nothing selected)'}"/>
+                <TextBlock Text="{Binding SelectedQueue.EmailCount, StringFormat='Emails: {0}', FallbackValue='Emails: (nothing selected)'}"/>
             </StackPanel>
-        </Grid>
-
-        <Separator Grid.Row="3" Margin="0,5"/>
-
-        <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <GroupBox Grid.Column="0" Header="Shapes to Review" Margin="0,0,2,0">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
-                        <CheckBox Content="Show Valid" IsChecked="{Binding ShowValid}" Margin="0,0,10,0"/>
-                        <CheckBox Content="Show Invalid" IsChecked="{Binding ShowInvalid}" Margin="0,0,10,0"/>
-                    </StackPanel>
-                    <ListView ItemsSource="{Binding ShapesToReview}" SelectedItem="{Binding SelectedShapeForReview}">
-                    </ListView>
-                </DockPanel>
-            </GroupBox>
-
-            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" Background="{DynamicResource Esri_BackgroundBrush}"/>
-
-            <GroupBox Grid.Column="2" Header="Selected Shapes to Use" Margin="2,0,0,0">
-                <ListView ItemsSource="{Binding SelectedShapes}" SelectedItem="{Binding SelectedShapeForUse}">
-                </ListView>
-            </GroupBox>
-        </Grid>
-
+        </DockPanel>
     </Grid>
 </UserControl>
