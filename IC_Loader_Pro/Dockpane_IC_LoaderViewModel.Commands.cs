@@ -53,6 +53,7 @@ namespace IC_Loader_Pro
         private async Task OnShowNotes()
         {
             Log.recordMessage("Menu: Notes was clicked.", Bis_Log_Message_Type.Note);
+            Log.open();
             await Task.CompletedTask;
         }
 

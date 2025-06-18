@@ -53,6 +53,13 @@ namespace IC_Loader_Pro
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => true);
+            SaveCommand = new RelayCommand(async () => await OnSave(), () => IsUIEnabled);
+            SkipCommand = new RelayCommand(async () => await OnSkip(), () => IsUIEnabled);
+            RejectCommand = new RelayCommand(async () => await OnReject(), () => IsUIEnabled);
+            ShowNotesCommand = new RelayCommand(async () => await OnShowNotes(), () => IsUIEnabled);
+            SearchCommand = new RelayCommand(async () => await OnSearch(), () => IsUIEnabled);
+            ToolsCommand = new RelayCommand(async () => await OnTools(), () => IsUIEnabled);
+            OptionsCommand = new RelayCommand(async () => await OnOptions(), () => IsUIEnabled);
         }
         #endregion
      
