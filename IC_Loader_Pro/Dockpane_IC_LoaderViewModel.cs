@@ -36,8 +36,8 @@ namespace IC_Loader_Pro
         private readonly ReadOnlyObservableCollection<ICQueueInfo> _readOnlyListOfQueues;
 
         private ICQueueInfo _selectedQueue;
-
         private bool _isInitialized = false;
+        private readonly object _lock = new object();
         #endregion
 
         #region Constructor
@@ -54,7 +54,7 @@ namespace IC_Loader_Pro
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => true);
         }
         #endregion
-
+     
         #region Public Properties and Commands for UI Binding
 
         /// <summary>
@@ -92,11 +92,9 @@ namespace IC_Loader_Pro
         /// </summary>
         protected override Task InitializeAsync()
         {
-            // We can add event subscriptions here if needed, like in the sample
-            // ProjectOpenedEvent.Subscribe(...);
-
-            // Let's load the queues when the dockpane initializes
-            return RefreshICQueuesAsync();
+            // Kick off our main initialization method.
+            // The framework will await this task.
+            return LoadAndInitializeAsync();
         }
 
         /// <summary>
