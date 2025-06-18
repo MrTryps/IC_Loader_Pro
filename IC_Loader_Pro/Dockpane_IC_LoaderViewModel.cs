@@ -28,16 +28,17 @@ namespace IC_Loader_Pro
         public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
 
         private readonly object _lockQueueCollection = new object();
-
         // This is the "real" list that we will add/remove items from
         private readonly ObservableCollection<ICQueueInfo> _listOfQueues = new ObservableCollection<ICQueueInfo>();
-
         // This is a read-only wrapper around the real list that we will expose to the UI
         private readonly ReadOnlyObservableCollection<ICQueueInfo> _readOnlyListOfQueues;
 
         private ICQueueInfo _selectedQueue;
         private bool _isInitialized = false;
         private readonly object _lock = new object();
+        private string _statusMessage = "Please open or create an ArcGIS Pro project.";
+        public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
         #endregion
 
         #region Constructor
@@ -76,11 +77,7 @@ namespace IC_Loader_Pro
             }
         }
 
-        public bool IsUIEnabled { get; private set; }
-        public string StatusMessage { get; private set; }
-
-
-        #endregion
+         #endregion
 
       
 
@@ -92,9 +89,15 @@ namespace IC_Loader_Pro
         /// </summary>
         protected override Task InitializeAsync()
         {
-            // Kick off our main initialization method.
-            // The framework will await this task.
-            return LoadAndInitializeAsync();
+            ProjectOpenedEvent.Subscribe(OnProjectOpened);
+            ProjectClosedEvent.Subscribe(OnProjectClosed);
+
+            // This handles the case where the dockpane is opened AFTER a project is already open.
+            if (Project.Current != null)
+            {
+                OnProjectOpened(new ProjectEventArgs(Project.Current));
+            }
+            return base.InitializeAsync();
         }
 
         /// <summary>
@@ -108,5 +111,27 @@ namespace IC_Loader_Pro
             pane.Activate();
         }
         #endregion
+        #region Event Handlers
+
+        /// <summary>
+        /// This is our main entry point, called only when a project is confirmed to be open.
+        /// </summary>
+        private void OnProjectOpened(ProjectEventArgs args)
+        {
+            _ = LoadAndInitializeAsync();
+        }
+
+        /// <summary>
+        /// Resets the UI when the user closes their project.
+        /// </summary>
+        private void OnProjectClosed(ProjectEventArgs args)
+        {
+            lock (_lock) { _isInitialized = false; }
+            IsUIEnabled = false;
+            StatusMessage = "Please open or create an ArcGIS Pro project.";
+        }
+
+        #endregion
+
     }
 }

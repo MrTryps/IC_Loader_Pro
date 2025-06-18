@@ -20,6 +20,9 @@ namespace IC_Loader_Pro
         #region Initialization Fields and Properties
 
         private FeatureLayer _manualAddLayer = null;
+        private bool _isUIEnabled = false;
+        public bool IsUIEnabled { get => _isUIEnabled; set => SetProperty(ref _isUIEnabled, value); }
+
 
         /// <summary>
         /// A helper property that returns the full, persistent path for our 'manually_added' shapefile.
@@ -66,6 +69,9 @@ namespace IC_Loader_Pro
                 }
 
                 await EnsureManualAddLayerExistsAsync(activeMap);
+
+                Log.recordMessage("Refreshing IC Queues...", Bis_Log_Message_Type.Note);
+                await RefreshICQueuesAsync();
 
                 Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);
                 StatusMessage = "Ready. Please select an IC Type.";
