@@ -17,33 +17,81 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid>
-        <DockPanel Margin="5">
-            <TextBlock DockPanel.Dock="Top" Text="IC Queues" FontWeight="Bold"/>
-            <ListBox DockPanel.Dock="Top" ItemsSource="{Binding ICQueues}" SelectedItem="{Binding SelectedQueue}">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
+    <Grid Margin="10" IsEnabled="{Binding IsUIEnabled}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="Auto"/> </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Menu Grid.Column="0" VerticalAlignment="Center" Background="Transparent">
+                <MenuItem Header="_Notes" Command="{Binding ShowNotesCommand}"/>
+                <MenuItem Header="_Search" Command="{Binding SearchCommand}"/>
+                <MenuItem Header="_Tools" Command="{Binding ToolsCommand}"/>
+                <MenuItem Header="_Options" Command="{Binding OptionsCommand}"/>
+            </Menu>
+            <ListBox Grid.Column="1" ItemsSource="{Binding ICQueues}" SelectedItem="{Binding SelectedQueue}" BorderThickness="0" Background="Transparent">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" Margin="2,5"
-                                      IsChecked="{Binding Path=IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}">
+                        <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" Margin="2,0" IsChecked="{Binding Path=IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Name}"/>
-                                <TextBlock Text="{Binding EmailCount, StringFormat=' ({0})'}"/>
+                                <TextBlock Text="{Binding EmailCount, StringFormat=' ({0})'}" Foreground="{DynamicResource Esri_Gray130Brush}"/>
                             </StackPanel>
                         </ToggleButton>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+        </Grid>
 
-            <TextBlock Text="Selected Queue Details" DockPanel.Dock="Top" Margin="0,10,0,0" FontWeight="Bold"/>
-            <StackPanel DockPanel.Dock="Top">
-                <TextBlock Text="{Binding SelectedQueue.Name, StringFormat='Name: {0}', FallbackValue='Name: (nothing selected)'}"/>
-                <TextBlock Text="{Binding SelectedQueue.EmailCount, StringFormat='Emails: {0}', FallbackValue='Emails: (nothing selected)'}"/>
+        <Separator Grid.Row="1" Margin="0,5"/>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding StatusMessage, FallbackValue='Please select an IC Type to begin.'}" VerticalAlignment="Center" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Passed:" Margin="15,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
+                <TextBlock Text="{Binding SelectedQueue.PassedCount, FallbackValue='0'}" Margin="0,0,15,0" FontWeight="SemiBold"/>
+                <TextBlock Text="Skipped:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
+                <TextBlock Text="{Binding SelectedQueue.SkippedCount, FallbackValue='0'}" Margin="0,0,15,0" FontWeight="SemiBold"/>
+                <TextBlock Text="Failed:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
+                <TextBlock Text="{Binding SelectedQueue.FailedCount, FallbackValue='0'}" FontWeight="SemiBold"/>
             </StackPanel>
-        </DockPanel>
+        </Grid>
+
+        <Separator Grid.Row="3" Margin="0,5"/>
+
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <GroupBox Grid.Column="0" Header="Shapes to Review" Margin="0,0,2,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
+                        <CheckBox Content="Show Valid" IsChecked="{Binding ShowValid}" Margin="0,0,10,0"/>
+                        <CheckBox Content="Show Invalid" IsChecked="{Binding ShowInvalid}" Margin="0,0,10,0"/>
+                    </StackPanel>
+                    <ListView ItemsSource="{Binding ShapesToReview}" SelectedItem="{Binding SelectedShapeForReview}"/>
+                </DockPanel>
+            </GroupBox>
+            <GridSplitter Grid.Column="1" Width="3" HorizontalAlignment="Stretch" Background="Transparent"/>
+            <GroupBox Grid.Column="2" Header="Selected Shapes to Use" Margin="2,0,0,0">
+                <ListView ItemsSource="{Binding SelectedShapes}" SelectedItem="{Binding SelectedShapeToUse}"/>
+            </GroupBox>
+        </Grid>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Save" Command="{Binding SaveCommand}" Style="{DynamicResource Esri_ButtonSuccess}" Margin="5,0" Width="80"/>
+            <Button Content="Skip" Command="{Binding SkipCommand}" Margin="5,0" Width="80"/>
+            <Button Content="Reject" Command="{Binding RejectCommand}" Style="{DynamicResource Esri_ButtonDanger}" Margin="5,0" Width="80"/>
+        </StackPanel>
     </Grid>
 </UserControl>
