@@ -6,8 +6,10 @@ using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using IC_Loader_Pro.Models; // Your ICQueueInfo class
+using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models; // Your ICQueueSummary  class
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -29,15 +31,29 @@ namespace IC_Loader_Pro
 
         private readonly object _lockQueueCollection = new object();
         // This is the "real" list that we will add/remove items from
-        private readonly ObservableCollection<ICQueueInfo> _listOfQueues = new ObservableCollection<ICQueueInfo>();
+        private readonly ObservableCollection<ICQueueSummary > _ListOfIcEmailTypeSummaries = new ObservableCollection<ICQueueSummary >();
         // This is a read-only wrapper around the real list that we will expose to the UI
-        private readonly ReadOnlyObservableCollection<ICQueueInfo> _readOnlyListOfQueues;
+        private readonly ReadOnlyObservableCollection<ICQueueSummary > _readOnly_ListOfIcEmailTypeSummaries;
 
-        private ICQueueInfo _selectedQueue;
+        private List<EmailItem> _emailsForCurrentQueue;
+        private int _currentEmailIndex = -1;
+
+        // This property holds the SINGLE email we are currently processing
+        private EmailItem _currentEmail;
+        public EmailItem CurrentEmail
+        {
+            get => _currentEmail;
+            set => SetProperty(ref _currentEmail, value);
+        }
+
+        private ICQueueSummary  _selectedICEmailSummary;
         private bool _isInitialized = false;
         private readonly object _lock = new object();
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
+        private IcGisTypeSetting IcGisTypeSetting { get; set; }
+
 
         #endregion
 
@@ -46,10 +62,10 @@ namespace IC_Loader_Pro
         {
            
             // Create the public, read-only collection that the UI will bind to
-            _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueInfo>(_listOfQueues);
+            _readOnly_ListOfIcEmailTypeSummaries = new ReadOnlyObservableCollection<ICQueueSummary >(_ListOfIcEmailTypeSummaries);
 
             // This is a key step from the sample. It allows a background thread to safely update a collection that the UI is bound to.
-            BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
+            BindingOperations.EnableCollectionSynchronization(_readOnly_ListOfIcEmailTypeSummaries, _lockQueueCollection);
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => true);
@@ -63,24 +79,28 @@ namespace IC_Loader_Pro
         }
         #endregion
      
-        #region Public Properties and Commands for UI Binding
+        #region Public Properties for UI Binding
 
         /// <summary>
         /// The list of IC Queues exposed to the View.
         /// </summary>
-        public ReadOnlyObservableCollection<ICQueueInfo> ICQueues => _readOnlyListOfQueues;
+        public ReadOnlyObservableCollection<ICQueueSummary > ICQueues => _readOnly_ListOfIcEmailTypeSummaries;
 
         /// <summary>
         /// The currently selected IC Queue from the UI.
         /// </summary>
-        public ICQueueInfo SelectedQueue
+        public ICQueueSummary  SelectedQueue
         {
-            get => _selectedQueue;
+            get => _selectedICEmailSummary;
             set
             {
                 // SetProperty is a helper method from the DockPane base class
-                SetProperty(ref _selectedQueue, value, () => SelectedQueue);
-                // When a queue is selected, we can trigger logic here later
+                SetProperty(ref _selectedICEmailSummary, value, () => SelectedQueue);
+                // When a queue is selected, kick off the process to load its emails.
+                if (_selectedICEmailSummary != null && IsUIEnabled)
+                {
+                    _ = LoadEmailsForQueueAsync(_selectedICEmailSummary);
+                }
             }
         }
 
