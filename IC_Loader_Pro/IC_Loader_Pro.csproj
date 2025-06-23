@@ -38,7 +38,7 @@
     <Content Include="Images\IC_LoadTool_Prj.png" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Data.Odbc" Version="6.0.1" />
+    <PackageReference Include="System.Data.Odbc" Version="9.0.6" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="ArcGIS.Desktop.Framework">
@@ -105,9 +105,6 @@
       <HintPath>C:\Program Files\ArcGIS\Pro\bin\ArcGIS.Desktop.Resources.dll</HintPath>
       <CopyLocal>False</CopyLocal>
       <Private>False</Private>
-    </Reference>
-    <Reference Include="BIS_Deliverable_DataAndTests">
-      <HintPath>..\..\..\MostCurrentDlls\BIS_Deliverable_DataAndTests.dll</HintPath>
     </Reference>
     <Reference Include="BIS_Tools_2025_Core">
       <HintPath>..\..\..\..\..\2025_Dlls\net6.0\BIS_Tools_2025_Core.dll</HintPath>

@@ -1,5 +1,10 @@
-﻿using ArcGIS.Desktop.Framework.Contracts;
+﻿using ArcGIS.Desktop.Framework;
+using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models;
+using IC_Loader_Pro.Services;
+using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -82,20 +87,57 @@ namespace IC_Loader_Pro
         {
             return QueuedTask.Run(() =>
             {
-                // This lock ensures that the collection is not modified by two threads at once.
-                lock (_lockQueueCollection)
-                {
-                    _listOfQueues.Clear();
+                // Instantiate the service once, outside the loop, for efficiency.
+                var outlookService = new OutlookService();
 
-                    // For now, we use sample data. Later, we will replace this with a call
-                    // to your BIS_IC_InputClasses_2025 library.
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+                // We'll build a temporary list here on the background thread.
+                var summaryList = new List<ICQueueSummary>();
+
+                foreach (string IcType in IC_Rules.ReturnIcTypes())
+                {
+                    try
+                    {
+                        IcGisTypeSetting icSetting = IC_Rules.ReturnIcGisTypeSettings(IcType);
+                        string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
+
+                        // 1. Call our service to get the detailed list of emails for this queue.
+                        List<EmailItem> emailsInQueue = outlookService.GetEmailsFromSubfolder(outlookFolderName);
+
+                        // 2. Create the summary object using the results from the service call.
+                        var summary = new ICQueueSummary
+                        {
+                            Name = IcType,
+                            EmailCount = emailsInQueue.Count,
+                            PassedCount = 0,  // This will be calculated later as the user works through the queue.
+                            SkippedCount = 0, // This will be calculated later.
+                            FailedCount = 0   // This will be calculated later.
+                        };
+
+                        summaryList.Add(summary);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        // Log the error for the specific queue that failed, then continue to the next.
+                        Log.recordError($"An error occurred while checking queue '{IcType}'.", ex, nameof(RefreshICQueuesAsync));
+                    }
                 }
 
-                // Select the first item by default
-                SelectedQueue = _readOnlyListOfQueues.FirstOrDefault();
+                // 3. Now that we have all the data, update the main UI collection on the UI thread.
+                // This is safer and more efficient than updating it inside the loop.
+                FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                {
+                    lock (_lockQueueCollection) // Use the lock for thread safety
+                    {
+                        _ListOfIcEmailTypeSummaries.Clear();
+                        foreach (var summary in summaryList)
+                        {
+                            _ListOfIcEmailTypeSummaries.Add(summary);
+                        }
+                    }
+
+                    // Select the first item in the list by default
+                    SelectedQueue = _readOnly_ListOfIcEmailTypeSummaries.FirstOrDefault();
+                });
             });
         }
         #endregion

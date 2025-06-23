@@ -114,8 +114,6 @@ namespace IC_Loader_Pro
                 {
                     await QueuedTask.Run(() =>
                     {
-                        // --- THE CORRECTED LOGIC ---
-                        // Use a standard if-check for the basemap instead of the '??' operator.
                         Basemap basemap = Basemap.ProjectDefault;
                         if (basemap == null)
                         {
