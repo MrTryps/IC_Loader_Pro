@@ -83,60 +83,123 @@ namespace IC_Loader_Pro
         /// <summary>
         /// This method will contain the logic to call your Outlook library and get the real data.
         /// </summary>
+        //private Task RefreshICQueuesAsync()
+        //{
+        //    return QueuedTask.Run(() =>
+        //    {
+        //        // Instantiate the service once, outside the loop, for efficiency.
+        //        var outlookService = new OutlookService();
+
+        //        // We'll build a temporary list here on the background thread.
+        //        var summaryList = new List<ICQueueSummary>();
+
+        //        foreach (string IcType in IC_Rules.ReturnIcTypes())
+        //        {
+        //            try
+        //            {
+        //                IcGisTypeSetting icSetting = IC_Rules.ReturnIcGisTypeSettings(IcType);
+        //                string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
+
+        //                // 1. Call our service to get the detailed list of emails for this queue.
+        //                List<EmailItem> emailsInQueue = outlookService.GetEmailsFromSubfolder(outlookFolderName);
+
+        //                // 2. Create the summary object using the results from the service call.
+        //                var summary = new ICQueueSummary
+        //                {
+        //                    Name = IcType,
+        //                    EmailCount = emailsInQueue.Count,
+        //                    PassedCount = 0,  // This will be calculated later as the user works through the queue.
+        //                    SkippedCount = 0, // This will be calculated later.
+        //                    FailedCount = 0   // This will be calculated later.
+        //                };
+
+        //                summaryList.Add(summary);
+        //            }
+        //            catch (System.Exception ex)
+        //            {
+        //                // Log the error for the specific queue that failed, then continue to the next.
+        //                Log.recordError($"An error occurred while checking queue '{IcType}'.", ex, nameof(RefreshICQueuesAsync));
+        //            }
+        //        }
+
+        //        // 3. Now that we have all the data, update the main UI collection on the UI thread.
+        //        // This is safer and more efficient than updating it inside the loop.
+        //        FrameworkApplication.Current.Dispatcher.Invoke(() =>
+        //        {
+        //            lock (_lockQueueCollection) // Use the lock for thread safety
+        //            {
+        //                _ListOfIcEmailTypeSummaries.Clear();
+        //                foreach (var summary in summaryList)
+        //                {
+        //                    _ListOfIcEmailTypeSummaries.Add(summary);
+        //                }
+        //            }
+
+        //            // Select the first item in the list by default
+        //            SelectedQueue = _readOnly_ListOfIcEmailTypeSummaries.FirstOrDefault();
+        //        });
+        //    });
+        //}
         private Task RefreshICQueuesAsync()
         {
             return QueuedTask.Run(() =>
             {
-                // Instantiate the service once, outside the loop, for efficiency.
+                Log.recordMessage($"DIAGNOSTIC: Attempting to use IC_Rules from assembly: {typeof(IC_Rules_2025.IC_Rules).Assembly.Location}", Bis_Log_Message_Type.Note);
                 var outlookService = new OutlookService();
-
-                // We'll build a temporary list here on the background thread.
                 var summaryList = new List<ICQueueSummary>();
 
-                foreach (string IcType in IC_Rules.ReturnIcTypes())
+                try
                 {
-                    try
+                    foreach (string icType in IC_Rules.ReturnIcTypes())
                     {
-                        IcGisTypeSetting icSetting = IC_Rules.ReturnIcGisTypeSettings(IcType);
+                        // This is the line that is causing the exception at runtime
+                        IcGisTypeSetting icSetting = IC_Rules.ReturnIcGisTypeSettings(icType);
                         string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
 
-                        // 1. Call our service to get the detailed list of emails for this queue.
                         List<EmailItem> emailsInQueue = outlookService.GetEmailsFromSubfolder(outlookFolderName);
-
-                        // 2. Create the summary object using the results from the service call.
                         var summary = new ICQueueSummary
                         {
-                            Name = IcType,
+                            Name = icType,
                             EmailCount = emailsInQueue.Count,
-                            PassedCount = 0,  // This will be calculated later as the user works through the queue.
-                            SkippedCount = 0, // This will be calculated later.
-                            FailedCount = 0   // This will be calculated later.
+                            PassedCount = 0,
+                            SkippedCount = 0,
+                            FailedCount = 0
                         };
-
                         summaryList.Add(summary);
                     }
-                    catch (System.Exception ex)
-                    {
-                        // Log the error for the specific queue that failed, then continue to the next.
-                        Log.recordError($"An error occurred while checking queue '{IcType}'.", ex, nameof(RefreshICQueuesAsync));
-                    }
+                }
+                catch (MissingMethodException mmEx)
+                {
+                    // --- THIS IS THE DIAGNOSTIC CODE ---
+                    // Get the file path of the assembly where the IC_Rules class is being loaded from
+                    var assembly = typeof(IC_Rules_2025.IC_Rules).Assembly;
+                    string assemblyLocation = assembly.Location;
+                    string assemblyFullName = assembly.FullName;
+
+                    string errorMessage = $@"A MissingMethodException occurred. This confirms the wrong DLL is being loaded at runtime.
+
+The system is loading the IC_Rules class from this location:
+{assemblyLocation}
+
+Full Assembly Name:
+{assemblyFullName}
+
+Original Exception: {mmEx.ToString()}";
+
+                    Log.recordError(errorMessage, mmEx, nameof(RefreshICQueuesAsync));
+
+                    // We will also show a message box to be absolutely sure we see it.
+                    System.Windows.MessageBox.Show(errorMessage, "Critical Runtime DLL Mismatch Error");
+                }
+                catch (System.Exception ex)
+                {
+                    Log.recordError("A general error occurred while refreshing queues.", ex, nameof(RefreshICQueuesAsync));
                 }
 
-                // 3. Now that we have all the data, update the main UI collection on the UI thread.
-                // This is safer and more efficient than updating it inside the loop.
+                // ... the rest of the method to update the UI ...
                 FrameworkApplication.Current.Dispatcher.Invoke(() =>
                 {
-                    lock (_lockQueueCollection) // Use the lock for thread safety
-                    {
-                        _ListOfIcEmailTypeSummaries.Clear();
-                        foreach (var summary in summaryList)
-                        {
-                            _ListOfIcEmailTypeSummaries.Add(summary);
-                        }
-                    }
-
-                    // Select the first item in the list by default
-                    SelectedQueue = _readOnly_ListOfIcEmailTypeSummaries.FirstOrDefault();
+                    // ...
                 });
             });
         }

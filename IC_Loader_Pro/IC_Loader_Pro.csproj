@@ -117,12 +117,12 @@
       <CopyLocal>False</CopyLocal>
       <Private>False</Private>
     </Reference>
-    <Reference Include="IC_Rules_2025">
-      <HintPath>..\..\..\..\..\2025_Dlls\Debug\net6.0\IC_Rules_2025.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Forms\" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BIS_Tools_2025\IC_Rules_2025\IC_Rules_2025\IC_Rules_2025.csproj" />
   </ItemGroup>
   <Import Project="C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets" Condition="Exists('C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets') AND !Exists('Esri.ArcGISPro.Extensions.targets')" />
 </Project>

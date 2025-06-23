@@ -6,6 +6,7 @@ using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
+using ArcGIS.Desktop.Mapping.Events;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models; // Your ICQueueSummary  class
 using System;
@@ -116,15 +117,21 @@ namespace IC_Loader_Pro
         /// </summary>
         protected override Task InitializeAsync()
         {
-            ProjectOpenedEvent.Subscribe(OnProjectOpened);
-            ProjectClosedEvent.Subscribe(OnProjectClosed);
+            ActiveMapViewChangedEvent.Subscribe(OnActiveMapViewChanged);
+            //ProjectOpenedEvent.Subscribe(OnProjectOpened);
+            //ProjectClosedEvent.Subscribe(OnProjectClosed);
 
-            // This handles the case where the dockpane is opened AFTER a project is already open.
-            if (Project.Current != null)
+            //// This handles the case where the dockpane is opened AFTER a project is already open.
+            //if (Project.Current != null)
+            //{
+            //    OnProjectOpened(new ProjectEventArgs(Project.Current));
+            //}
+            //return base.InitializeAsync();
+            if (MapView.Active != null)
             {
-                OnProjectOpened(new ProjectEventArgs(Project.Current));
+                OnActiveMapViewChanged(new ActiveMapViewChangedEventArgs(MapView.Active, null));
             }
-            return base.InitializeAsync();
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -140,23 +147,41 @@ namespace IC_Loader_Pro
         #endregion
         #region Event Handlers
 
-        /// <summary>
-        /// This is our main entry point, called only when a project is confirmed to be open.
-        /// </summary>
-        private void OnProjectOpened(ProjectEventArgs args)
+        private void OnActiveMapViewChanged(ActiveMapViewChangedEventArgs args)
         {
-            _ = LoadAndInitializeAsync();
+            // The new, incoming view is in the 'IncomingView' property.
+            // If it's null, it means no map view is active (e.g., all maps were closed).
+            if (args.IncomingView == null)
+            {
+                IsUIEnabled = false;
+                StatusMessage = "Please open a map view to begin.";
+                return;
+            }
+
+            // Now that we know a map view is active, kick off our initialization.
+            // We pass the Map from the incoming view.
+            _ = LoadAndInitializeAsync(args.IncomingView.Map);
         }
 
-        /// <summary>
-        /// Resets the UI when the user closes their project.
-        /// </summary>
-        private void OnProjectClosed(ProjectEventArgs args)
-        {
-            lock (_lock) { _isInitialized = false; }
-            IsUIEnabled = false;
-            StatusMessage = "Please open or create an ArcGIS Pro project.";
-        }
+
+
+        ///// <summary>
+        ///// This is our main entry point, called only when a project is confirmed to be open.
+        ///// </summary>
+        //private void OnProjectOpened(ProjectEventArgs args)
+        //{
+        //    _ = LoadAndInitializeAsync();
+        //}
+
+        ///// <summary>
+        ///// Resets the UI when the user closes their project.
+        ///// </summary>
+        //private void OnProjectClosed(ProjectEventArgs args)
+        //{
+        //    lock (_lock) { _isInitialized = false; }
+        //    IsUIEnabled = false;
+        //    StatusMessage = "Please open or create an ArcGIS Pro project.";
+        //}
 
         #endregion
 

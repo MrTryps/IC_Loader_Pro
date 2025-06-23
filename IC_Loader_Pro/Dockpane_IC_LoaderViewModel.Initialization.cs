@@ -43,109 +43,115 @@ namespace IC_Loader_Pro
         #region Initialization Methods
 
         /// <summary>
-        /// This is the single entry point for our setup logic, called by the button click.
+        /// Contains all the main setup logic for the dockpane.
+        /// It is given a valid map to work with.
         /// </summary>
-        public async Task LoadAndInitializeAsync()
+        private async Task LoadAndInitializeAsync(Map activeMap)
         {
-            // Use a lock and a flag to ensure this complex initialization only ever runs once.
+            // Use a lock and a flag to ensure this complex initialization only ever runs once
+            // for the lifetime of the dockpane.
             lock (_lock)
             {
-                if (_isInitialized)
-                    return;
+                if (_isInitialized) return;
                 _isInitialized = true;
             }
 
-            Log.recordMessage("Initializing Dockpane...", Bis_Log_Message_Type.Note);
-            StatusMessage = "Initializing map and layers...";
-            IsUIEnabled = false; // Disable UI during setup
+            StatusMessage = "Initializing...";
+            IsUIEnabled = false;
 
             try
             {
-                Map activeMap = await GetAndPrepareMapAsync();
-                if (activeMap == null)
+                // Now, we just need to ensure the SR and the layer are correct on the provided map.
+                await QueuedTask.Run(() =>
                 {
-                    StatusMessage = "Error: A map could not be opened or created.";
-                    return;
-                }
+                    int requiredWkid = 2260; // NAD 1983 StatePlane New Jersey FIPS 2900 (US Feet)
+                    if (activeMap.SpatialReference?.Wkid != requiredWkid)
+                    {
+                        Log.recordMessage($"Active map is not in the required coordinate system. Forcing it to NJ State Plane.", Bis_Log_Message_Type.Warning);
+                        var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
+                        activeMap.SetSpatialReference(njStatePlane);
+                    }
+                });
 
+                // Ensure our special "manually_added" scratch layer is ready.
                 await EnsureManualAddLayerExistsAsync(activeMap);
 
-                Log.recordMessage("Refreshing IC Queues...", Bis_Log_Message_Type.Note);
+                // Load the data for the IC Queue toggle buttons.
                 await RefreshICQueuesAsync();
 
-                Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);
+                // Final step: Update status and enable the UI.
                 StatusMessage = "Ready. Please select an IC Type.";
-                IsUIEnabled = true; // Enable the UI now that setup is complete
+                IsUIEnabled = true;
             }
             catch (Exception ex)
             {
-                Log.recordError("A fatal error occurred during map and layer initialization.", ex, nameof(LoadAndInitializeAsync));
+                Log.recordError("A fatal error occurred during initialization.", ex, nameof(LoadAndInitializeAsync));
                 StatusMessage = "An error occurred during initialization.";
             }
         }
 
-        /// <summary>
-        /// Gets an active map, or creates a new one if necessary, and ensures it
-        /// is set to the required NJ State Plane coordinate system.
-        /// </summary>
-        private async Task<Map> GetAndPrepareMapAsync()
-        {
-            if (Project.Current == null)
-            {
-                Log.recordError("Cannot get or create a map because no project is open.", null, nameof(GetAndPrepareMapAsync));
-                return null;
-            }
+        ///// <summary>
+        ///// Gets an active map, or creates a new one if necessary, and ensures it
+        ///// is set to the required NJ State Plane coordinate system.
+        ///// </summary>
+        //private async Task<Map> GetAndPrepareMapAsync()
+        //{
+        //    if (Project.Current == null)
+        //    {
+        //        Log.recordError("Cannot get or create a map because no project is open.", null, nameof(GetAndPrepareMapAsync));
+        //        return null;
+        //    }
 
-            try
-            {
-                Map map = MapView.Active?.Map;
+        //    try
+        //    {
+        //        Map map = MapView.Active?.Map;
 
-                if (map == null)
-                {
-                    var mapProjectItem = Project.Current.GetItems<MapProjectItem>().FirstOrDefault();
-                    if (mapProjectItem != null)
-                    {
-                        map = await QueuedTask.Run(() => mapProjectItem.GetMap());
-                        await ProApp.Panes.CreateMapPaneAsync(map);
-                    }
-                }
+        //        if (map == null)
+        //        {
+        //            var mapProjectItem = Project.Current.GetItems<MapProjectItem>().FirstOrDefault();
+        //            if (mapProjectItem != null)
+        //            {
+        //                map = await QueuedTask.Run(() => mapProjectItem.GetMap());
+        //                await ProApp.Panes.CreateMapPaneAsync(map);
+        //            }
+        //        }
 
-                if (map == null)
-                {
-                    await QueuedTask.Run(() =>
-                    {
-                        Basemap basemap = Basemap.ProjectDefault;
-                        if (basemap == null)
-                        {
-                            Log.recordMessage("No default basemap found. Falling back to 'Streets'.", Bis_Log_Message_Type.Note);
-                            basemap = Basemap.Streets;
-                        }
+        //        if (map == null)
+        //        {
+        //            await QueuedTask.Run(() =>
+        //            {
+        //                Basemap basemap = Basemap.ProjectDefault;
+        //                if (basemap == null)
+        //                {
+        //                    Log.recordMessage("No default basemap found. Falling back to 'Streets'.", Bis_Log_Message_Type.Note);
+        //                    basemap = Basemap.Streets;
+        //                }
 
-                        map = MapFactory.Instance.CreateMap("New Map", MapType.Map, MapViewingMode.Map, basemap);
-                    });
-                    await ProApp.Panes.CreateMapPaneAsync(map);
-                }
+        //                map = MapFactory.Instance.CreateMap("New Map", MapType.Map, MapViewingMode.Map, basemap);
+        //            });
+        //            await ProApp.Panes.CreateMapPaneAsync(map);
+        //        }
 
-                // Now that we have a map, ENSURE it has the correct spatial reference.
-                await QueuedTask.Run(() =>
-                {
-                    int requiredWkid = 2260; // NAD 1983 StatePlane New Jersey FIPS 2900 (US Feet)
-                    if (map.SpatialReference?.Wkid != requiredWkid)
-                    {
-                        Log.recordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", Bis_Log_Message_Type.Warning);
-                        var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
-                        map.SetSpatialReference(njStatePlane);
-                    }
-                });
+        //        // Now that we have a map, ENSURE it has the correct spatial reference.
+        //        await QueuedTask.Run(() =>
+        //        {
+        //            int requiredWkid = 2260; // NAD 1983 StatePlane New Jersey FIPS 2900 (US Feet)
+        //            if (map.SpatialReference?.Wkid != requiredWkid)
+        //            {
+        //                Log.recordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", Bis_Log_Message_Type.Warning);
+        //                var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
+        //                map.SetSpatialReference(njStatePlane);
+        //            }
+        //        });
 
-                return map;
-            }
-            catch (Exception ex)
-            {
-                Log.recordError("An unexpected error occurred while getting or preparing the map.", ex, nameof(GetAndPrepareMapAsync));
-                return null;
-            }
-        }
+        //        return map;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.recordError("An unexpected error occurred while getting or preparing the map.", ex, nameof(GetAndPrepareMapAsync));
+        //        return null;
+        //    }
+        //}
 
         /// <summary>
         /// Ensures the "manually_added" scratch layer exists and is valid.
