@@ -32,7 +32,7 @@
                 <MenuItem Header="_Tools" Command="{Binding ToolsCommand}"/>
                 <MenuItem Header="_Options" Command="{Binding OptionsCommand}"/>
             </Menu>
-            <ListBox Grid.Column="1" ItemsSource="{Binding ICQueues}" SelectedItem="{Binding SelectedQueue}" BorderThickness="0" Background="Transparent">
+            <ListBox Grid.Column="1" ItemsSource="{Binding ICEmailTypeSummaries}" SelectedItem="{Binding SelectedIcType}" BorderThickness="0" Background="Transparent">
                 <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>

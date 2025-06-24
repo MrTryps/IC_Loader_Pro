@@ -72,7 +72,7 @@ namespace IC_Loader_Pro
             {
                 // We have finished the list
                 CurrentEmail = null;
-                StatusMessage = $"All emails in queue '{SelectedQueue.Name}' have been processed.";
+                StatusMessage = $"All emails in queue '{SelectedIcType.Name}' have been processed.";
                 Log.recordMessage("End of email queue reached.", Bis_Log_Message_Type.Note);
             }
         }

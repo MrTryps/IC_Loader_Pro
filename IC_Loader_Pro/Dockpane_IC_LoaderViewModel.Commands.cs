@@ -136,7 +136,7 @@ namespace IC_Loader_Pro
         //            }
 
         //            // Select the first item in the list by default
-        //            SelectedQueue = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
+        //            SelectedIcType = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
         //        });
         //    });
         //}
@@ -168,8 +168,8 @@ namespace IC_Loader_Pro
                         }
                     }
 
-                    SelectedQueue = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
-                    Log.recordMessage($"DIAGNOSTIC: RefreshICQueuesAsync finished. The ICQueues collection now has {ICEmailTypeSummaries.Count} items.", Bis_Log_Message_Type.Note);
+                    SelectedIcType = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
+                    Log.recordMessage($"DIAGNOSTIC: RefreshICQueuesAsync finished. The ICQueues collection now has {_ListOfIcEmailSummaries.Count} items.", Bis_Log_Message_Type.Note);
                 });
             }
             catch (System.Exception ex)

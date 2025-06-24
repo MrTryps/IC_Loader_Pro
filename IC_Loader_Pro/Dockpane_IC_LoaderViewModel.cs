@@ -100,16 +100,16 @@ namespace IC_Loader_Pro
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
         // Properties for the currently selected items in the UI
-        private ICQueueSummary _selectedQueue;
-        public ICQueueSummary SelectedQueue
+        private ICQueueSummary _SelectedIcType;
+        public ICQueueSummary SelectedIcType
         {
-            get => _selectedQueue;
+            get => _SelectedIcType;
             set
             {
-                SetProperty(ref _selectedQueue, value);
-                if (_selectedQueue != null && IsUIEnabled)
+                SetProperty(ref _SelectedIcType, value);
+                if (_SelectedIcType != null && IsUIEnabled)
                 {
-                    _ = LoadEmailsForQueueAsync(_selectedQueue);
+                    _ = LoadEmailsForQueueAsync(_SelectedIcType);
                 }
             }
         }
