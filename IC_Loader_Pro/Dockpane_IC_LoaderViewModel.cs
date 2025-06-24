@@ -6,7 +6,7 @@ using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using IC_Loader_Pro.Models; // Your ICQueueInfo class
+using IC_Loader_Pro.Models; // Your ICQueueSummary class
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -29,11 +29,11 @@ namespace IC_Loader_Pro
 
         private readonly object _lockQueueCollection = new object();
         // This is the "real" list that we will add/remove items from
-        private readonly ObservableCollection<ICQueueInfo> _listOfQueues = new ObservableCollection<ICQueueInfo>();
+        private readonly ObservableCollection<ICQueueSummary> _ListOfIcEmailTypeSummaries = new ObservableCollection<ICQueueSummary>();
         // This is a read-only wrapper around the real list that we will expose to the UI
-        private readonly ReadOnlyObservableCollection<ICQueueInfo> _readOnlyListOfQueues;
+        private readonly ReadOnlyObservableCollection<ICQueueSummary> _readOnlyListOfQueues;
 
-        private ICQueueInfo _selectedQueue;
+        private ICQueueSummary _selectedQueue;
         private bool _isInitialized = false;
         private readonly object _lock = new object();
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
@@ -46,7 +46,7 @@ namespace IC_Loader_Pro
         {
            
             // Create the public, read-only collection that the UI will bind to
-            _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueInfo>(_listOfQueues);
+            _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
 
             // This is a key step from the sample. It allows a background thread to safely update a collection that the UI is bound to.
             BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
@@ -68,18 +68,18 @@ namespace IC_Loader_Pro
         /// <summary>
         /// The list of IC Queues exposed to the View.
         /// </summary>
-        public ReadOnlyObservableCollection<ICQueueInfo> ICQueues => _readOnlyListOfQueues;
+        public ReadOnlyObservableCollection<ICQueueSummary> PublicListOfIcEmailTypeSummaries => _readOnlyListOfQueues;
 
         /// <summary>
         /// The currently selected IC Queue from the UI.
         /// </summary>
-        public ICQueueInfo SelectedQueue
+        public ICQueueSummary SelectedIcType
         {
             get => _selectedQueue;
             set
             {
                 // SetProperty is a helper method from the DockPane base class
-                SetProperty(ref _selectedQueue, value, () => SelectedQueue);
+                SetProperty(ref _selectedQueue, value, () => SelectedIcType);
                 // When a queue is selected, we can trigger logic here later
             }
         }

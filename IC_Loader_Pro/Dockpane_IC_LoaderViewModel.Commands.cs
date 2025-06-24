@@ -75,29 +75,29 @@ namespace IC_Loader_Pro
             await Task.CompletedTask;
         }
 
-        /// <summary>
-        /// This method will contain the logic to call your Outlook library and get the real data.
-        /// </summary>
-        private Task RefreshICQueuesAsync()
-        {
-            return QueuedTask.Run(() =>
-            {
-                // This lock ensures that the collection is not modified by two threads at once.
-                lock (_lockQueueCollection)
-                {
-                    _listOfQueues.Clear();
+        ///// <summary>
+        ///// This method will contain the logic to call your Outlook library and get the real data.
+        ///// </summary>
+        //private Task RefreshICQueuesAsync()
+        //{
+        //    return QueuedTask.Run(() =>
+        //    {
+        //        // This lock ensures that the collection is not modified by two threads at once.
+        //        lock (_lockQueueCollection)
+        //        {
+        //            _listOfQueues.Clear();
 
-                    // For now, we use sample data. Later, we will replace this with a call
-                    // to your BIS_IC_InputClasses_2025 library.
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-                    _listOfQueues.Add(new Models.ICQueueInfo { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-                }
+        //            // For now, we use sample data. Later, we will replace this with a call
+        //            // to your BIS_IC_InputClasses_2025 library.
+        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
+        //        }
 
-                // Select the first item by default
-                SelectedQueue = _readOnlyListOfQueues.FirstOrDefault();
-            });
-        }
+        //        // Select the first item by default
+        //        SelectedIcType = _readOnlyListOfQueues.FirstOrDefault();
+        //    });
+        //}
         #endregion
     }
 }

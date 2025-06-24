@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace IC_Loader_Pro.Models
 {
     // Ensure your class inherits from PropertyChangedBase from the Esri framework
-    public class ICQueueInfo : PropertyChangedBase
+    public class ICQueueSummary : PropertyChangedBase
     {
         private string _name;
         public string Name
