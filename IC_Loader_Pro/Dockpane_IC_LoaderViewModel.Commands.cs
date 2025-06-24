@@ -128,80 +128,56 @@ namespace IC_Loader_Pro
         //        {
         //            lock (_lockQueueCollection) // Use the lock for thread safety
         //            {
-        //                _ListOfIcEmailTypeSummaries.Clear();
+        //                _ListOfIcEmailSummaries.Clear();
         //                foreach (var summary in summaryList)
         //                {
-        //                    _ListOfIcEmailTypeSummaries.Add(summary);
+        //                    _ListOfIcEmailSummaries.Add(summary);
         //                }
         //            }
 
         //            // Select the first item in the list by default
-        //            SelectedQueue = _readOnly_ListOfIcEmailTypeSummaries.FirstOrDefault();
+        //            SelectedQueue = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
         //        });
         //    });
         //}
         private Task RefreshICQueuesAsync()
         {
-            return QueuedTask.Run(() =>
+            // TEMPORARY WORKAROUND: We are bypassing the call to IC_Rules to avoid the runtime error.
+            // We will replace this with your real data logic later.
+            Log.recordMessage("Bypassing IC_Rules library and loading SAMPLE data for UI testing.", Bis_Log_Message_Type.Warning);
+
+            try
             {
-                Log.recordMessage($"DIAGNOSTIC: Attempting to use IC_Rules from assembly: {typeof(IC_Rules_2025.IC_Rules).Assembly.Location}", Bis_Log_Message_Type.Note);
-                var outlookService = new OutlookService();
-                var summaryList = new List<ICQueueSummary>();
+                // Create a hardcoded list of summary objects.
+                var summaryList = new List<ICQueueSummary>
+        {
+            new ICQueueSummary { Name = "Sample Type A", EmailCount = 12, PassedCount = 5, SkippedCount = 2, FailedCount = 1 },
+            new ICQueueSummary { Name = "Sample Type B", EmailCount = 5, PassedCount = 3, SkippedCount = 0, FailedCount = 0 },
+            new ICQueueSummary { Name = "Sample Type C", EmailCount = 23, PassedCount = 15, SkippedCount = 5, FailedCount = 3 }
+        };
 
-                try
-                {
-                    foreach (string icType in IC_Rules.ReturnIcTypes())
-                    {
-                        // This is the line that is causing the exception at runtime
-                        IcGisTypeSetting icSetting = IC_Rules.ReturnIcGisTypeSettings(icType);
-                        string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
-
-                        List<EmailItem> emailsInQueue = outlookService.GetEmailsFromSubfolder(outlookFolderName);
-                        var summary = new ICQueueSummary
-                        {
-                            Name = icType,
-                            EmailCount = emailsInQueue.Count,
-                            PassedCount = 0,
-                            SkippedCount = 0,
-                            FailedCount = 0
-                        };
-                        summaryList.Add(summary);
-                    }
-                }
-                catch (MissingMethodException mmEx)
-                {
-                    // --- THIS IS THE DIAGNOSTIC CODE ---
-                    // Get the file path of the assembly where the IC_Rules class is being loaded from
-                    var assembly = typeof(IC_Rules_2025.IC_Rules).Assembly;
-                    string assemblyLocation = assembly.Location;
-                    string assemblyFullName = assembly.FullName;
-
-                    string errorMessage = $@"A MissingMethodException occurred. This confirms the wrong DLL is being loaded at runtime.
-
-The system is loading the IC_Rules class from this location:
-{assemblyLocation}
-
-Full Assembly Name:
-{assemblyFullName}
-
-Original Exception: {mmEx.ToString()}";
-
-                    Log.recordError(errorMessage, mmEx, nameof(RefreshICQueuesAsync));
-
-                    // We will also show a message box to be absolutely sure we see it.
-                    System.Windows.MessageBox.Show(errorMessage, "Critical Runtime DLL Mismatch Error");
-                }
-                catch (System.Exception ex)
-                {
-                    Log.recordError("A general error occurred while refreshing queues.", ex, nameof(RefreshICQueuesAsync));
-                }
-
-                // ... the rest of the method to update the UI ...
+                // Update the UI collection from the UI thread.
                 FrameworkApplication.Current.Dispatcher.Invoke(() =>
                 {
-                    // ...
+                    lock (_lockQueueCollection)
+                    {
+                        _ListOfIcEmailSummaries.Clear();
+                        foreach (var summary in summaryList)
+                        {
+                            _ListOfIcEmailSummaries.Add(summary);
+                        }
+                    }
+
+                    SelectedQueue = _readOnly__ListOfIcEmailSummaries.FirstOrDefault();
+                    Log.recordMessage($"DIAGNOSTIC: RefreshICQueuesAsync finished. The ICQueues collection now has {ICEmailTypeSummaries.Count} items.", Bis_Log_Message_Type.Note);
                 });
-            });
+            }
+            catch (System.Exception ex)
+            {
+                Log.recordError("An error occurred while creating sample queue data.", ex, nameof(RefreshICQueuesAsync));
+            }
+
+            return Task.CompletedTask;
         }
         #endregion
     }

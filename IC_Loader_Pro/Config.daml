@@ -23,11 +23,13 @@
               an empty group-->
         <group id="IC_Loader_Pro_Group1" caption="IC_Tools_2025" appearsOnAddInTab="true">
           <!-- host controls within groups -->
+          <button refID="IC_Loader_Pro_TestButton" size="large" />
           <button refID="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" size="large" />
         </group>
       </groups>
       <controls>
         <!-- add your controls here -->
+        <button id="IC_Loader_Pro_TestButton" caption="Run DLL Test" className="TestButton" />
         <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" 
                 caption="Show Dockpane _IC_Loader" 
                 className="Dockpane_IC_Loader_ShowButton" 
