@@ -73,8 +73,6 @@ namespace IC_Loader_Pro
                 await EnsureManualAddLayerExistsAsync(activeMap);
 
                 Log.recordMessage("Refreshing IC Queues...", Bis_Log_Message_Type.Note);
-                List<String> icTypes = IcRules.ReturnIcTypes();
-                var icSetting = IcRules.ReturnIcGisTypeSettings("CEA");
                 await RefreshICQueuesAsync();
 
                 Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);

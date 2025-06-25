@@ -22,12 +22,9 @@ namespace IC_Loader_Pro
             // Log the start of the operation and update the UI status.
             Log.recordMessage("Refreshing IC Queue summaries from source...", Bis_Log_Message_Type.Note);
             StatusMessage = "Loading email queues...";
-            // List<string> l = IcRules.ReturnIcTypes();
-            //Log.recordMessage($"{l.Count()} IC tpes to load", Bis_Log_Message_Type.Note);
             var rulesEngine = Module1.IcRules;
             try
             {
-            IcGisTypeSetting icSetting2 = rulesEngine.ReturnIcGisTypeSettings("CEA");
                 // This work will be done on a background thread to keep the UI responsive.
                 var summaryList = await QueuedTask.Run( () =>
                 {
@@ -41,10 +38,10 @@ namespace IC_Loader_Pro
                         {
                             // Get the specific settings for this queue, including the folder name.
                             IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
-                            string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
+                            string outlookFolderPath = icSetting.OutlookInboxFolderPath;
 
                             // Call our service to get the detailed list of emails for this folder.
-                            List<EmailItem> emailsInQueue = outlookService.GetEmailsFromSubfolder(outlookFolderName);
+                            List<EmailItem> emailsInQueue = outlookService.GetEmailsFromFolderPath(outlookFolderPath);
 
                             // Create the summary object from the results.
                             summaries.Add(new ICQueueSummary
