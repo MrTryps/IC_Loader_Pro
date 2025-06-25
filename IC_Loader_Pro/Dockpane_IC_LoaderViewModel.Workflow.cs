@@ -2,14 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
-using static BIS_Tools_2025_Core.BIS_Log;
 using static IC_Loader_Pro.Module1;
-using IC_Rules_2025;
 using IC_Loader_Pro.Services;
 using IC_Loader_Pro.Models;
 using BIS_Tools_DataModels_2025;
+using static BIS_Tools_2025_Core.BIS_Log;
 
 namespace IC_Loader_Pro
 {
@@ -24,24 +22,25 @@ namespace IC_Loader_Pro
             // Log the start of the operation and update the UI status.
             Log.recordMessage("Refreshing IC Queue summaries from source...", Bis_Log_Message_Type.Note);
             StatusMessage = "Loading email queues...";
-
+            // List<string> l = IcRules.ReturnIcTypes();
+            //Log.recordMessage($"{l.Count()} IC tpes to load", Bis_Log_Message_Type.Note);
+            var rulesEngine = Module1.IcRules;
             try
             {
+            IcGisTypeSetting icSetting2 = rulesEngine.ReturnIcGisTypeSettings("CEA");
                 // This work will be done on a background thread to keep the UI responsive.
-                var summaryList = await QueuedTask.Run(static () =>
+                var summaryList = await QueuedTask.Run( () =>
                 {
                     var outlookService = new OutlookService();
                     var summaries = new List<ICQueueSummary>();
 
-                    // Get the list of IC Types to process from your rules engine.
-                    List<String> icTypes = new List<string> { "CEA", "DNA"};//IcRules.ReturnIcTypes();
-
-                    foreach (string icType in icTypes)
+                    // Get the list of IC Types to process from your rules engine.                 
+                    foreach (string icType in IcRules.ReturnIcTypes())
                     {
                         try
                         {
                             // Get the specific settings for this queue, including the folder name.
-                            IcGisTypeSetting icSetting = IcRules.ReturnIcGisTypeSettings(icType);
+                            IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
                             string outlookFolderName = icSetting.EmailFolderSet.InboxFolderName;
 
                             // Call our service to get the detailed list of emails for this folder.

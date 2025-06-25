@@ -5,7 +5,9 @@ using ArcGIS.Desktop.Core.Geoprocessing;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
+using BIS_Tools_DataModels_2025;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -71,6 +73,8 @@ namespace IC_Loader_Pro
                 await EnsureManualAddLayerExistsAsync(activeMap);
 
                 Log.recordMessage("Refreshing IC Queues...", Bis_Log_Message_Type.Note);
+                List<String> icTypes = IcRules.ReturnIcTypes();
+                var icSetting = IcRules.ReturnIcGisTypeSettings("CEA");
                 await RefreshICQueuesAsync();
 
                 Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);

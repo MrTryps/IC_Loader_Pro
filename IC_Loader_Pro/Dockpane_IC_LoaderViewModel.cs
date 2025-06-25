@@ -6,6 +6,8 @@ using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
+using ArcGIS.Desktop.Mapping.Events;
+using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models; // Your ICQueueSummary class
 using System;
 using System.Collections.ObjectModel;
@@ -99,12 +101,29 @@ namespace IC_Loader_Pro
             ProjectOpenedEvent.Subscribe(OnProjectOpened);
             ProjectClosedEvent.Subscribe(OnProjectClosed);
 
-            // This handles the case where the dockpane is opened AFTER a project is already open.
-            if (Project.Current != null)
+            ActiveMapViewChangedEvent.Subscribe(OnActiveMapViewChanged);
+
+            if (MapView.Active != null)
             {
-                OnProjectOpened(new ProjectEventArgs(Project.Current));
-            }
+                // A map is already active, so we can initialize immediately.
+                OnActiveMapViewChanged(new ActiveMapViewChangedEventArgs(MapView.Active, null));
+            }           
             return base.InitializeAsync();
+        }
+
+        private void OnActiveMapViewChanged(ActiveMapViewChangedEventArgs args)
+        {
+            if (MapView.Active != null && !_isInitialized)
+            {
+                // A map view is now active and we haven't run our setup yet.
+                // This is the SAFE time to run your initialization.
+                IcGisTypeSetting icSetting = null;
+                _ = LoadAndInitializeAsync();
+
+                // Set the flag so we don't run this full initialization again
+                // every time the user switches between maps.
+                _isInitialized = true;
+            }
         }
 
         /// <summary>
@@ -125,7 +144,8 @@ namespace IC_Loader_Pro
         /// </summary>
         private void OnProjectOpened(ProjectEventArgs args)
         {
-            _ = LoadAndInitializeAsync();
+            Module1.Log.recordMessage("Project opened. Waiting for active map view.",Bis_Log_Message_Type.Note );
+            //_ = LoadAndInitializeAsync();
         }
 
         /// <summary>
