@@ -7,7 +7,7 @@ using static IC_Loader_Pro.Module1;
 using IC_Loader_Pro.Services;
 using IC_Loader_Pro.Models;
 using BIS_Tools_DataModels_2025;
-using static BIS_Tools_2025_Core.BIS_Log;
+using static BIS_Log;
 
 namespace IC_Loader_Pro
 {
@@ -20,7 +20,7 @@ namespace IC_Loader_Pro
         private async Task RefreshICQueuesAsync()
         {
             // Log the start of the operation and update the UI status.
-            Log.recordMessage("Refreshing IC Queue summaries from source...", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Refreshing IC Queue summaries from source...", BisLogMessageType.Note);
             StatusMessage = "Loading email queues...";
             var rulesEngine = Module1.IcRules;
             try
@@ -42,8 +42,13 @@ namespace IC_Loader_Pro
 
                             // Get the new test sender email from the settings.
                             string testSender = icSetting.TestSenderEmail;
-                            bool? testModeFlag = null;
-                            testModeFlag = true;
+                            // --- LOCAL TEST FLAG ---
+                            // Set the test mode directly in the code.
+                            // true  = Filter FOR emails from the test sender only.
+                            // false = Filter OUT emails from the test sender.
+                            // null  = Disable test filtering.
+                            bool? testModeFlag = true;
+
                             // Call our service to get the detailed list of emails for this folder.
                             List <EmailItem> emailsInQueue = outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag);
 
@@ -60,7 +65,7 @@ namespace IC_Loader_Pro
                         catch (Exception ex)
                         {
                             // Log the error for any specific queue that fails, then continue to the next.
-                            Log.recordError($"An error occurred while processing queue '{icType}'.", ex, nameof(RefreshICQueuesAsync));
+                            Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(RefreshICQueuesAsync));
                         }
                     }
                     return summaries;
@@ -80,12 +85,12 @@ namespace IC_Loader_Pro
 
                 // Set the default selected item.
                 SelectedIcType = PublicListOfIcEmailTypeSummaries.FirstOrDefault();
-                Log.recordMessage($"Successfully loaded {PublicListOfIcEmailTypeSummaries.Count} queues.", Bis_Log_Message_Type.Note);
+                Log.RecordMessage($"Successfully loaded {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
             }
             catch (Exception ex)
             {
                 // This will catch any unexpected errors in the overall process.
-                Log.recordError("A fatal error occurred while refreshing the IC Queues.", ex, nameof(RefreshICQueuesAsync));
+                Log.RecordError("A fatal error occurred while refreshing the IC Queues.", ex, nameof(RefreshICQueuesAsync));
                 StatusMessage = "Error loading email queues.";
             }
         }

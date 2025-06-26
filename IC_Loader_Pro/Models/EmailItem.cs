@@ -9,14 +9,15 @@ namespace IC_Loader_Pro.Models
 {
     public class EmailItem : PropertyChangedBase
     {
-        private string _permanentId;
         /// <summary>
         /// The permanent, unchanging Internet Message ID of the email.
+        /// Stored in the database's "emailid" column.
         /// </summary>
-        public string PermanentId
+        private string _emailid;
+        public string Emailid
         {
-            get => _permanentId;
-            set => SetProperty(ref _permanentId, value);
+            get => _emailid;
+            set => SetProperty(ref _emailid, value);
         }
 
         private string _subject;

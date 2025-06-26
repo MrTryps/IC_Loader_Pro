@@ -1,6 +1,5 @@
 ﻿using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
-using BIS_Tools_2025_Core;
 using IC_Rules_2025;
 using System;
 using System.Threading.Tasks;
@@ -13,7 +12,7 @@ namespace IC_Loader_Pro
         private static Module1 _this = null;
         private static BIS_Log _log;
         private static IC_Rules _icRules = null;
-        private static BIS_DB_Tools.BIS_DB_PostGre _postGreTool = null;
+        private static BIS_DB_PostGre _postGreTool = null;
 
         /// <summary>
         /// Retrieve the singleton instance to this module here
@@ -43,7 +42,7 @@ namespace IC_Loader_Pro
         /// Retrieve the singleton instance of the PostgreSQL database tools.
         /// Guaranteed to be available after the module has been initialized.
         /// </summary>
-        public static BIS_DB_Tools.BIS_DB_PostGre PostGreTool => _postGreTool;
+        public static BIS_DB_PostGre PostGreTool => _postGreTool;
 
         #endregion
 
@@ -81,7 +80,7 @@ namespace IC_Loader_Pro
   // Initialize the Database Tool
             try
             {
-                _postGreTool = new BIS_DB_Tools.BIS_DB_PostGre(_log);
+                _postGreTool = new BIS_DB_PostGre(_log);
                 System.Diagnostics.Debug.WriteLine("Module.Initialize: BIS_DB_PostGre service created successfully.");
             }
             catch (Exception ex)
@@ -89,7 +88,7 @@ namespace IC_Loader_Pro
                 // Write the full exception to both the debug output and the main log file.
                 string errorMessage = $"Failed to create BIS_DB_PostGre service in Module.Initialize";
                 System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
-                _log.recordError($"FATAL: {errorMessage}",ex, nameof(Initialize));
+                _log.RecordError($"FATAL: {errorMessage}",ex, nameof(Initialize));
             }
             // Initialize the Rules Engine
             try
@@ -102,7 +101,7 @@ namespace IC_Loader_Pro
                 // Write the full exception to both the debug output and the main log file.
                 string errorMessage = $"Failed to create IC_Rules service in Module.Initialize";
                 System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
-                _log.recordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
+                _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
             }
           
 

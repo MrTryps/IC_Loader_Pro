@@ -119,7 +119,7 @@
     <Folder Include="Forms\" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\BIS_Tools_2025\BIS_Tools_2025_Core\BIS_Tools_2025_Core\BIS_Tools_2025_Core\BIS_Tools_2025_Core.vbproj" />
+    <ProjectReference Include="..\..\..\BIS_Tools_2025\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core.csproj" />
     <ProjectReference Include="..\..\..\BIS_Tools_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025.csproj" />
     <ProjectReference Include="..\..\..\BIS_Tools_2025\IC_Rules_2025\IC_Rules_2025\IC_Rules_2025.csproj" />
   </ItemGroup>

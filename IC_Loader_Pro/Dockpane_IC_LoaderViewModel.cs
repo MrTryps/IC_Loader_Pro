@@ -16,7 +16,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Windows.Input;
-using static BIS_Tools_2025_Core.BIS_Log;
+using static BIS_Log;
 using static IC_Loader_Pro.Module1; // For  Log
 
 namespace IC_Loader_Pro
@@ -144,7 +144,7 @@ namespace IC_Loader_Pro
         /// </summary>
         private void OnProjectOpened(ProjectEventArgs args)
         {
-            Module1.Log.recordMessage("Project opened. Waiting for active map view.",Bis_Log_Message_Type.Note );
+            Module1.Log.RecordMessage("Project opened. Waiting for active map view.", BisLogMessageType.Note );
             //_ = LoadAndInitializeAsync();
         }
 

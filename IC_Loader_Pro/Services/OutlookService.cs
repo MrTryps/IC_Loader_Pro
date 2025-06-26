@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using static BIS_Tools_2025_Core.BIS_Log;
+using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
@@ -67,7 +67,7 @@ namespace IC_Loader_Pro.Services
 
                             results.Add(new EmailItem
                             {
-                                PermanentId = internetMessageId,
+                                Emailid = internetMessageId,
                                 Subject = mailItem.Subject,
                                 ReceivedTime = mailItem.ReceivedTime,
                                 SenderName = mailItem.SenderName,
@@ -84,7 +84,7 @@ namespace IC_Loader_Pro.Services
             }
             catch (Exception ex)
             {
-                Log.recordError($"Failed to retrieve emails using path '{fullFolderPath}'.", ex, "GetEmailsFromFolderPath");
+                Log.RecordError($"Failed to retrieve emails using path '{fullFolderPath}'.", ex, "GetEmailsFromFolderPath");
                 throw;
             }
             finally
@@ -104,13 +104,13 @@ namespace IC_Loader_Pro.Services
             // If the flag is true, filter FOR the test sender.
             if (isInTestMode.Value)
             {
-                Log.recordMessage($"TEST MODE (Include): Filtering for emails from {testSenderEmail}", Bis_Log_Message_Type.Warning);
+                Log.RecordMessage($"TEST MODE (Include): Filtering for emails from {testSenderEmail}", BisLogMessageType.Warning);
                 return results.Where(e => e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
             }
             // If the flag is false, filter OUT the test sender.
             else
             {
-                Log.recordMessage($"TEST MODE (Exclude): Filtering out emails from {testSenderEmail}", Bis_Log_Message_Type.Warning);
+                Log.RecordMessage($"TEST MODE (Exclude): Filtering out emails from {testSenderEmail}", BisLogMessageType.Warning);
                 return results.Where(e => !e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
             }
         }

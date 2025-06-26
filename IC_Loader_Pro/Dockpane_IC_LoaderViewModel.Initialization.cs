@@ -11,7 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using static BIS_Tools_2025_Core.BIS_Log;
+using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 
 namespace IC_Loader_Pro
@@ -57,7 +57,7 @@ namespace IC_Loader_Pro
                 _isInitialized = true;
             }
 
-            Log.recordMessage("Initializing Dockpane...", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Initializing Dockpane...", BisLogMessageType.Note);
             StatusMessage = "Initializing map and layers...";
             IsUIEnabled = false; // Disable UI during setup
 
@@ -72,16 +72,16 @@ namespace IC_Loader_Pro
 
                 await EnsureManualAddLayerExistsAsync(activeMap);
 
-                Log.recordMessage("Refreshing IC Queues...", Bis_Log_Message_Type.Note);
+                Log.RecordMessage("Refreshing IC Queues...", BisLogMessageType.Note);
                 await RefreshICQueuesAsync();
 
-                Log.recordMessage("Initialization complete.", Bis_Log_Message_Type.Note);
+                Log.RecordMessage("Initialization complete.", BisLogMessageType.Note);
                 StatusMessage = "Ready. Please select an IC Type.";
                 IsUIEnabled = true; // Enable the UI now that setup is complete
             }
             catch (Exception ex)
             {
-                Log.recordError("A fatal error occurred during map and layer initialization.", ex, nameof(LoadAndInitializeAsync));
+                Log.RecordError("A fatal error occurred during map and layer initialization.", ex, nameof(LoadAndInitializeAsync));
                 StatusMessage = "An error occurred during initialization.";
             }
         }
@@ -94,7 +94,7 @@ namespace IC_Loader_Pro
         {
             if (Project.Current == null)
             {
-                Log.recordError("Cannot get or create a map because no project is open.", null, nameof(GetAndPrepareMapAsync));
+                Log.RecordError("Cannot get or create a map because no project is open.", null, nameof(GetAndPrepareMapAsync));
                 return null;
             }
 
@@ -121,7 +121,7 @@ namespace IC_Loader_Pro
                         Basemap basemap = Basemap.ProjectDefault;
                         if (basemap == null)
                         {
-                            Log.recordMessage("No default basemap found. Falling back to 'Streets'.", Bis_Log_Message_Type.Note);
+                            Log.RecordMessage("No default basemap found. Falling back to 'Streets'.", BisLogMessageType.Note);
                             basemap = Basemap.Streets;
                         }
 
@@ -136,7 +136,7 @@ namespace IC_Loader_Pro
                     int requiredWkid = 2260; // NAD 1983 StatePlane New Jersey FIPS 2900 (US Feet)
                     if (map.SpatialReference?.Wkid != requiredWkid)
                     {
-                        Log.recordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", Bis_Log_Message_Type.Warning);
+                        Log.RecordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", BisLogMessageType.Warning);
                         var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
                         map.SetSpatialReference(njStatePlane);
                     }
@@ -146,7 +146,7 @@ namespace IC_Loader_Pro
             }
             catch (Exception ex)
             {
-                Log.recordError("An unexpected error occurred while getting or preparing the map.", ex, nameof(GetAndPrepareMapAsync));
+                Log.RecordError("An unexpected error occurred while getting or preparing the map.", ex, nameof(GetAndPrepareMapAsync));
                 return null;
             }
         }
@@ -191,7 +191,7 @@ namespace IC_Loader_Pro
                     }
                     else
                     {
-                        Log.recordMessage($"Removing invalid '{layerName}' layer. Reason: {validationError}", Bis_Log_Message_Type.Warning);
+                        Log.RecordMessage($"Removing invalid '{layerName}' layer. Reason: {validationError}", BisLogMessageType.Warning);
                         map.RemoveLayer(existingLayer);
                     }
                 }
@@ -204,18 +204,18 @@ namespace IC_Loader_Pro
                         var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
                         var parameters = Geoprocessing.MakeValueArray(Path.GetDirectoryName(shapefilePath), Path.GetFileName(shapefilePath), "POLYGON", "", "DISABLED", "DISABLED", njStatePlane);
                         var gpResult = Geoprocessing.ExecuteToolAsync("management.CreateFeatureclass", parameters).Result;
-                        if (gpResult.IsFailed) { Log.recordError($"Failed to create shapefile: {string.Join("\n", gpResult.Messages.Select(m => m.Text))}", null, nameof(EnsureManualAddLayerExistsAsync)); return; }
+                        if (gpResult.IsFailed) { Log.RecordError($"Failed to create shapefile: {string.Join("\n", gpResult.Messages.Select(m => m.Text))}", null, nameof(EnsureManualAddLayerExistsAsync)); return; }
 
                         parameters = Geoprocessing.MakeValueArray(shapefilePath, "id", "TEXT", "", "", 50);
                         gpResult = Geoprocessing.ExecuteToolAsync("management.AddField", parameters).Result;
-                        if (gpResult.IsFailed) { Log.recordError($"Failed to add 'id' field: {string.Join("\n", gpResult.Messages.Select(m => m.Text))}", null, nameof(EnsureManualAddLayerExistsAsync)); return; }
+                        if (gpResult.IsFailed) { Log.RecordError($"Failed to add 'id' field: {string.Join("\n", gpResult.Messages.Select(m => m.Text))}", null, nameof(EnsureManualAddLayerExistsAsync)); return; }
                     }
-                    catch (Exception ex) { Log.recordError("Exception during geoprocessing.", ex, nameof(EnsureManualAddLayerExistsAsync)); return; }
+                    catch (Exception ex) { Log.RecordError("Exception during geoprocessing.", ex, nameof(EnsureManualAddLayerExistsAsync)); return; }
                 }
 
                 var layerParams = new LayerCreationParams(new Uri(shapefilePath)) { Name = layerName };
                 _manualAddLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, map);
-                if (_manualAddLayer == null) { Log.recordError($"Could not create or find the '{layerName}' layer after all checks.", null, nameof(EnsureManualAddLayerExistsAsync)); }
+                if (_manualAddLayer == null) { Log.RecordError($"Could not create or find the '{layerName}' layer after all checks.", null, nameof(EnsureManualAddLayerExistsAsync)); }
             });
         }
         #endregion
