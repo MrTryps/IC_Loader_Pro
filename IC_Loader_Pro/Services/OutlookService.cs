@@ -12,11 +12,13 @@ namespace IC_Loader_Pro.Services
     internal class OutlookService
     {
         /// <summary>
-        /// Gets emails from a folder specified by a full path, e.g., "\\My Mailbox\Inbox\Subfolder".
+        /// Gets emails from a folder, applying a three-state test filter.
         /// </summary>
         /// <param name="fullFolderPath">The full path to the folder.</param>
+        /// <param name="testSenderEmail">The email address to use for filtering.</param>
+        /// <param name="isInTestMode">The flag controlling the filter mode (null, true, or false).</param>
         /// <returns>A list of EmailItem objects.</returns>
-        public List<EmailItem> GetEmailsFromFolderPath(string fullFolderPath)
+        public List<EmailItem> GetEmailsFromFolderPath(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
             if (string.IsNullOrWhiteSpace(fullFolderPath) || !fullFolderPath.StartsWith("\\\\"))
             {
@@ -30,9 +32,7 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                // Parse the path to get the store and folder names
                 var (storeName, folderPath) = ParseOutlookPath(fullFolderPath);
-
                 outlookApp = new Outlook.Application();
                 targetFolder = GetFolderFromPath(outlookApp.GetNamespace("MAPI"), storeName, folderPath);
 
@@ -44,26 +44,36 @@ namespace IC_Loader_Pro.Services
                 outlookItems = targetFolder.Items;
                 outlookItems.Sort("[ReceivedTime]", true);
 
-                const string MessageIdProp = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
-
                 foreach (object item in outlookItems)
                 {
                     if (item is Outlook.MailItem mailItem)
                     {
                         try
                         {
-                            string internetMessageId = mailItem.PropertyAccessor.GetProperty(MessageIdProp)?.ToString();
+                            string senderEmail;
+                            if (mailItem.SenderEmailType == "EX")
+                            {
+                                senderEmail = mailItem.Sender?.GetExchangeUser()?.PrimarySmtpAddress;
+                            }
+                            else
+                            {
+                                senderEmail = mailItem.SenderEmailAddress;
+                            }
+
+                            if (string.IsNullOrEmpty(senderEmail)) continue;
+
+                            string internetMessageId = mailItem.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x1035001F")?.ToString();
                             if (string.IsNullOrEmpty(internetMessageId)) continue;
 
-                            var emailData = new EmailItem
+                            results.Add(new EmailItem
                             {
                                 PermanentId = internetMessageId,
                                 Subject = mailItem.Subject,
                                 ReceivedTime = mailItem.ReceivedTime,
                                 SenderName = mailItem.SenderName,
+                                SenderEmailAddress = senderEmail,
                                 AttachmentCount = mailItem.Attachments.Count
-                            };
-                            results.Add(emailData);
+                            });
                         }
                         finally
                         {
@@ -84,7 +94,25 @@ namespace IC_Loader_Pro.Services
                 if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
-            return results;
+            // --- NEW THREE-STATE FILTERING LOGIC ---
+            // If the flag is null or the test email is not set, do nothing.
+            if (!isInTestMode.HasValue || string.IsNullOrWhiteSpace(testSenderEmail))
+            {
+                return results;
+            }
+
+            // If the flag is true, filter FOR the test sender.
+            if (isInTestMode.Value)
+            {
+                Log.recordMessage($"TEST MODE (Include): Filtering for emails from {testSenderEmail}", Bis_Log_Message_Type.Warning);
+                return results.Where(e => e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            // If the flag is false, filter OUT the test sender.
+            else
+            {
+                Log.recordMessage($"TEST MODE (Exclude): Filtering out emails from {testSenderEmail}", Bis_Log_Message_Type.Warning);
+                return results.Where(e => !e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
         }
 
         /// <summary>

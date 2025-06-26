@@ -40,8 +40,12 @@ namespace IC_Loader_Pro
                             IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
                             string outlookFolderPath = icSetting.OutlookInboxFolderPath;
 
+                            // Get the new test sender email from the settings.
+                            string testSender = icSetting.TestSenderEmail;
+                            bool? testModeFlag = null;
+                            testModeFlag = true;
                             // Call our service to get the detailed list of emails for this folder.
-                            List<EmailItem> emailsInQueue = outlookService.GetEmailsFromFolderPath(outlookFolderPath);
+                            List <EmailItem> emailsInQueue = outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag);
 
                             // Create the summary object from the results.
                             summaries.Add(new ICQueueSummary

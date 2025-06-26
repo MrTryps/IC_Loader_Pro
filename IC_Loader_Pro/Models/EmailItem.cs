@@ -40,6 +40,13 @@ namespace IC_Loader_Pro.Models
             set => SetProperty(ref _senderName, value);
         }
 
+        private string _senderEmailAddress;
+        public string SenderEmailAddress
+        {
+            get => _senderEmailAddress;
+            set => SetProperty(ref _senderEmailAddress, value);
+        }
+
         private int _attachmentCount;
         public int AttachmentCount
         {
