@@ -41,6 +41,8 @@
     <Content Include="Images\IC_LoadTool_Prj.png" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Graph" Version="5.83.0" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.73.1" />
     <PackageReference Include="System.Data.Odbc" Version="6.0.1" />
   </ItemGroup>
   <ItemGroup>
