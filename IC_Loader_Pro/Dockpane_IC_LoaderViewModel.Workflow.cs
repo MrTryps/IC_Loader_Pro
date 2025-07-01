@@ -1,4 +1,5 @@
-﻿using ArcGIS.Desktop.Framework.Threading.Tasks;
+﻿using ArcGIS.Desktop.Framework;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,86 +14,140 @@ namespace IC_Loader_Pro
 {
     internal partial class Dockpane_IC_LoaderViewModel
     {
-        /// <summary>
-        /// Asynchronously fetches summary data for each IC Queue from the OutlookService
-        /// and populates the UI's collection of toggle buttons.
-        /// </summary>
+        // --- MASTER SWITCH ---
+        private const bool useGraphApi = false;
+
         private async Task RefreshICQueuesAsync()
         {
-            // Log the start of the operation and update the UI status.
+            // --- Step 1: Initial UI update ---
+            Log.RecordMessage("Step 1: Calling RunOnUIThread to disable UI.", BisLogMessageType.Note);
+            await RunOnUIThread(() =>
+            {
+                IsUIEnabled = false;
+                StatusMessage = "Loading email queues...";
+            });
+            Log.RecordMessage("Step 1: Completed.", BisLogMessageType.Note);
+
             Log.RecordMessage("Refreshing IC Queue summaries from source...", BisLogMessageType.Note);
-            StatusMessage = "Loading email queues...";
-            var rulesEngine = Module1.IcRules;
+
             try
             {
-                // This work will be done on a background thread to keep the UI responsive.
-                var summaryList = await QueuedTask.Run( () =>
+                // --- Step 2: Background work ---
+                List<ICQueueSummary> summaryList = await GetEmailSummariesAsync();
+                Log.RecordMessage($"Step 2: Background work complete. Found {summaryList.Count} summaries.", BisLogMessageType.Note);
+
+                // --- Step 3: Final UI update ---
+                Log.RecordMessage("Step 3: Calling RunOnUIThread to update UI with results.", BisLogMessageType.Note);
+                await RunOnUIThread(() =>
                 {
-                    var outlookService = new OutlookService();
-                    var summaries = new List<ICQueueSummary>();
-
-                    // Get the list of IC Types to process from your rules engine.                 
-                    foreach (string icType in IcRules.ReturnIcTypes())
+                    lock (_lockQueueCollection)
                     {
-                        try
+                        _ListOfIcEmailTypeSummaries.Clear();
+                        foreach (var summary in summaryList)
                         {
-                            // Get the specific settings for this queue, including the folder name.
-                            IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
-                            string outlookFolderPath = icSetting.OutlookInboxFolderPath;
-
-                            // Get the new test sender email from the settings.
-                            string testSender = icSetting.TestSenderEmail;
-                            // --- LOCAL TEST FLAG ---
-                            // Set the test mode directly in the code.
-                            // true  = Filter FOR emails from the test sender only.
-                            // false = Filter OUT emails from the test sender.
-                            // null  = Disable test filtering.
-                            bool? testModeFlag = true;
-
-                            // Call our service to get the detailed list of emails for this folder.
-                            List <EmailItem> emailsInQueue = outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag);
-
-                            // Create the summary object from the results.
-                            summaries.Add(new ICQueueSummary
-                            {
-                                Name = icType,
-                                EmailCount = emailsInQueue.Count,
-                                PassedCount = 0, // Will be calculated later.
-                                SkippedCount = 0,
-                                FailedCount = 0
-                            });
-                        }
-                        catch (Exception ex)
-                        {
-                            // Log the error for any specific queue that fails, then continue to the next.
-                            Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(RefreshICQueuesAsync));
+                            _ListOfIcEmailTypeSummaries.Add(summary);
                         }
                     }
-                    return summaries;
+
+                    SelectedIcType = PublicListOfIcEmailTypeSummaries.FirstOrDefault();
+                    Log.RecordMessage($"Successfully loadedxxx {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
+
+                    if (SelectedIcType != null)
+                    {
+                        StatusMessage = $"Ready. Default queue '{SelectedIcType.Name}' selected.";
+                    }
+                    else
+                    {
+                        StatusMessage = "No emails found in the specified queues.";
+                    }
                 });
-
-                // Now that we have the data, update the UI's collection.
-                // Because we enabled collection synchronization in the constructor,
-                // we can safely modify our private list and the UI will update automatically.
-                lock (_lockQueueCollection)
-                {
-                    _ListOfIcEmailTypeSummaries.Clear();
-                    foreach (var summary in summaryList)
-                    {
-                        _ListOfIcEmailTypeSummaries.Add(summary);
-                    }
-                }
-
-                // Set the default selected item.
-                SelectedIcType = PublicListOfIcEmailTypeSummaries.FirstOrDefault();
-                Log.RecordMessage($"Successfully loaded {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
+                Log.RecordMessage("Step 3: Completed.", BisLogMessageType.Note);
             }
             catch (Exception ex)
             {
-                // This will catch any unexpected errors in the overall process.
                 Log.RecordError("A fatal error occurred while refreshing the IC Queues.", ex, nameof(RefreshICQueuesAsync));
-                StatusMessage = "Error loading email queues.";
+                await RunOnUIThread(() => { StatusMessage = "Error loading email queues."; });
             }
+            finally
+            {
+                // --- Step 4: Re-enable UI ---
+                Log.RecordMessage("Step 4: Calling RunOnUIThread to re-enable UI.", BisLogMessageType.Note);
+                await RunOnUIThread(() => { IsUIEnabled = true; });
+                Log.RecordMessage("Step 4: Completed.", BisLogMessageType.Note);
+            }
+        }
+
+        /// <summary>
+        /// This helper method is now fully async from top to bottom.
+        /// </summary>
+        private async Task<List<ICQueueSummary>> GetEmailSummariesAsync()
+        {
+            var rulesEngine = Module1.IcRules;
+            var summaries = new List<ICQueueSummary>();
+
+            // Determine which service to use
+            GraphApiService graphService = null;
+            OutlookService outlookService = null;
+
+            if (useGraphApi)
+            {
+                Log.RecordMessage("Using Microsoft Graph API Service.", BisLogMessageType.Note);
+                graphService = await GraphApiService.CreateAsync();
+            }
+            else
+            {
+                Log.RecordMessage("Using Outlook Interop Service.", BisLogMessageType.Note);
+                outlookService = new OutlookService();
+            }
+
+            foreach (string icType in rulesEngine.ReturnIcTypes())
+            {
+                try
+                {
+                    IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
+                    string outlookFolderPath = icSetting.OutlookInboxFolderPath;
+                    string testSender = icSetting.TestSenderEmail;
+                    // --- LOCAL TEST FLAG ---
+                    // Set the test mode directly in the code.
+                    // true  = Filter FOR emails from the test sender only.
+                    // false = Filter OUT emails from the test sender.
+                    // null  = Disable test filtering.
+                    bool? testModeFlag = true;
+
+                    if (string.IsNullOrEmpty(outlookFolderPath))
+                    {
+                        Log.RecordMessage($"Skipping queue '{icType}' because OutlookFolderPath is not configured.", BisLogMessageType.Warning);
+                        continue;
+                    }
+
+                    List<EmailItem> emailsInQueue;
+                    if (useGraphApi)
+                    {
+                        // Await the async Graph call directly. No .Result.
+                        emailsInQueue = await graphService.GetEmailsFromFolderPathAsync(outlookFolderPath, testSender, testModeFlag);
+                    }
+                    else
+                    {
+                        // Use QueuedTask.Run to move the synchronous Outlook Interop call off the UI thread.
+                        emailsInQueue = await QueuedTask.Run(() =>
+                            outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag));
+                    }
+
+                    summaries.Add(new ICQueueSummary
+                    {
+                        Name = icType,
+                        EmailCount = emailsInQueue.Count,
+                        PassedCount = 0,
+                        SkippedCount = 0,
+                        FailedCount = 0
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(GetEmailSummariesAsync));
+                }
+            }
+            return summaries;
         }
     }
 }

@@ -4,7 +4,12 @@ using Microsoft.Identity.Client;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Kiota.Abstractions;
+using Microsoft.Kiota.Abstractions.Authentication;
 using static IC_Loader_Pro.Module1;
 
 namespace IC_Loader_Pro.Services
@@ -18,7 +23,7 @@ namespace IC_Loader_Pro.Services
         private const string TenantId = "YOUR_TENANT_ID_HERE"; // Can often be "common" or your organization's tenant ID
         private static readonly string[] _scopes = { "User.Read", "Mail.Read" };
 
-        public GraphApiService(GraphServiceClient graphClient)
+        private GraphApiService(GraphServiceClient graphClient)
         {
             _graphClient = graphClient;
         }
@@ -28,39 +33,19 @@ namespace IC_Loader_Pro.Services
         /// </summary>
         public static async Task<GraphApiService> CreateAsync()
         {
-            var publicClientApp = PublicClientApplicationBuilder
-                .Create(ClientId)
-                .WithAuthority(AzureCloudInstance.AzurePublic, TenantId)
-                .WithDefaultRedirectUri()
-                .Build();
+            var authProvider = new PublicClientAuthenticationProvider(ClientId, TenantId, _scopes);
 
-            AuthenticationResult authResult;
-            var accounts = await publicClientApp.GetAccountsAsync();
+            // You will need to add a using statement for System.Net.Http
+            var httpClient = new HttpClient();
 
-            try
-            {
-                // Try to get a token silently
-                authResult = await publicClientApp.AcquireTokenSilent(_scopes, accounts.FirstOrDefault()).ExecuteAsync();
-            }
-            catch (MsalUiRequiredException)
-            {
-                // If silent fails, show the interactive login
-                authResult = await publicClientApp.AcquireTokenInteractive(_scopes).ExecuteAsync();
-            }
+            var graphClient = new GraphServiceClient(httpClient, authProvider);
 
-            var graphClient = new GraphServiceClient(new DelegateAuthenticationProvider((requestMessage) =>
-            {
-                requestMessage.Headers.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authResult.AccessToken);
-                return Task.CompletedTask;
-            }));
+            // We need to trigger an initial authentication to ensure we have a token
+            await authProvider.AuthenticateRequestAsync(new RequestInformation());
 
             return new GraphApiService(graphClient);
         }
 
-        /// <summary>
-        /// Gets emails from a folder specified by a full path, applying a three-state test filter.
-        /// </summary>
         public async Task<List<EmailItem>> GetEmailsFromFolderPathAsync(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
             if (string.IsNullOrWhiteSpace(fullFolderPath) || !fullFolderPath.StartsWith("\\\\"))
@@ -71,22 +56,20 @@ namespace IC_Loader_Pro.Services
             var results = new List<EmailItem>();
             try
             {
-                var (storeName, folderPath) = ParseOutlookPath(fullFolderPath);
-
-                // Get the folder ID from its path
+                var (_, folderPath) = ParseOutlookPath(fullFolderPath);
                 string targetFolderId = await GetFolderIdFromPathAsync(folderPath);
                 if (string.IsNullOrEmpty(targetFolderId))
                 {
                     throw new System.IO.DirectoryNotFoundException($"The Outlook folder specified by the path '{fullFolderPath}' could not be found.");
                 }
 
-                // Fetch messages from the folder
                 var messages = await _graphClient.Me.MailFolders[targetFolderId].Messages
-                                     .Request()
-                                     .Select("subject,receivedDateTime,sender,from,hasAttachments,internetMessageId")
-                                     .GetAsync();
+                                     .GetAsync(requestConfiguration =>
+                                     {
+                                         requestConfiguration.QueryParameters.Select = new[] { "subject", "receivedDateTime", "sender", "from", "hasAttachments", "internetMessageId" };
+                                     });
 
-                foreach (var message in messages)
+                foreach (var message in messages.Value)
                 {
                     results.Add(new EmailItem
                     {
@@ -95,17 +78,16 @@ namespace IC_Loader_Pro.Services
                         ReceivedTime = message.ReceivedDateTime?.DateTime ?? DateTime.MinValue,
                         SenderName = message.Sender?.EmailAddress?.Name,
                         SenderEmailAddress = message.Sender?.EmailAddress?.Address,
-                        AttachmentCount = message.HasAttachments == true ? 1 : 0 // Note: Graph does not give a direct count here
+                        AttachmentCount = message.HasAttachments == true ? 1 : 0
                     });
                 }
             }
             catch (Exception ex)
             {
-                Log.recordError($"Failed to retrieve emails using Graph API for path '{fullFolderPath}'.", ex, "GetEmailsFromFolderPathAsync");
+                Log.RecordError($"Failed to retrieve emails using Graph API for path '{fullFolderPath}'.", ex, "GetEmailsFromFolderPathAsync");
                 throw;
             }
 
-            // Apply the same three-state filtering logic
             if (!isInTestMode.HasValue || string.IsNullOrWhiteSpace(testSenderEmail))
             {
                 return results;
@@ -121,27 +103,20 @@ namespace IC_Loader_Pro.Services
             }
         }
 
-        /// <summary>
-        /// Finds the ID of a mail folder given its path (e.g., "Inbox/Subfolder").
-        /// </summary>
         private async Task<string> GetFolderIdFromPathAsync(string path)
         {
             var folderNames = path.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
-
-            // Start with the root folder collection
-            var currentFolders = await _graphClient.Me.MailFolders.Request().GetAsync();
+            var currentFolders = await _graphClient.Me.MailFolders.GetAsync();
             string currentFolderId = null;
 
             foreach (var folderName in folderNames)
             {
-                var foundFolder = currentFolders.FirstOrDefault(f => f.DisplayName.Equals(folderName, StringComparison.OrdinalIgnoreCase));
-                if (foundFolder == null) return null; // Path not found
+                var foundFolder = currentFolders.Value.FirstOrDefault(f => f.DisplayName.Equals(folderName, StringComparison.OrdinalIgnoreCase));
+                if (foundFolder == null) return null;
 
                 currentFolderId = foundFolder.Id;
-                // Get the children of the current folder for the next iteration
-                currentFolders = await _graphClient.Me.MailFolders[currentFolderId].ChildFolders.Request().GetAsync();
+                currentFolders = await _graphClient.Me.MailFolders[currentFolderId].ChildFolders.GetAsync();
             }
-
             return currentFolderId;
         }
 
@@ -152,9 +127,42 @@ namespace IC_Loader_Pro.Services
             {
                 throw new ArgumentException("Path must include at least a store name and a folder name.", nameof(fullPath));
             }
-            // Note: With Graph, the store name is implied (it's always the user's primary mailbox)
-            // but we parse it to maintain compatibility with the existing path format.
             return (parts[0], parts[1]);
+        }
+    }
+
+    /// <summary>
+    /// This is the correct, modern IAuthenticationProvider implementation.
+    /// </summary>
+    public class PublicClientAuthenticationProvider : IAuthenticationProvider
+    {
+        private readonly IPublicClientApplication _clientApp;
+        private readonly string[] _scopes;
+
+        public PublicClientAuthenticationProvider(string clientId, string tenantId, string[] scopes)
+        {
+            _scopes = scopes;
+            _clientApp = PublicClientApplicationBuilder.Create(clientId)
+                .WithAuthority(AzureCloudInstance.AzurePublic, tenantId)
+                .WithDefaultRedirectUri()
+                .Build();
+        }
+
+        public async Task AuthenticateRequestAsync(RequestInformation request, Dictionary<string, object> additionalAuthenticationContext = null, CancellationToken cancellationToken = default)
+        {
+            var accounts = await _clientApp.GetAccountsAsync();
+            AuthenticationResult authResult;
+
+            try
+            {
+                authResult = await _clientApp.AcquireTokenSilent(_scopes, accounts.FirstOrDefault()).ExecuteAsync(cancellationToken);
+            }
+            catch (MsalUiRequiredException)
+            {
+                authResult = await _clientApp.AcquireTokenInteractive(_scopes).ExecuteAsync(cancellationToken);
+            }
+
+            request.Headers.Add("Authorization", new[] { $"Bearer {authResult.AccessToken}" });
         }
     }
 }

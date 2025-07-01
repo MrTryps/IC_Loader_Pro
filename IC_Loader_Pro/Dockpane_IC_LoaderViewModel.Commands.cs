@@ -8,8 +8,8 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using BIS_Tools_DataModels_2025;
 using static IC_Loader_Pro.Module1;
-using BIS_Tools_2025_Core;
-using static BIS_Tools_2025_Core.BIS_Log;
+using static BIS_Log;
+
 
 namespace IC_Loader_Pro
 {
@@ -29,7 +29,7 @@ namespace IC_Loader_Pro
         #region Command Methods
         private async Task OnSave()
         {
-            Log.recordMessage("Save button was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
 
             // We can now use 'await' here for any async GIS work in the future,
             // for example, saving features to the 'manually_added' layer.
@@ -41,39 +41,39 @@ namespace IC_Loader_Pro
         // Also update OnSkip and OnReject
         private async Task OnSkip()
         {
-            Log.recordMessage("Skip button was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Skip button was clicked.",BisLogMessageType.Note);
             // Use Task.CompletedTask as a placeholder since there's no async work yet.
             await Task.CompletedTask;
         }
 
         private async Task OnReject()
         {
-            Log.recordMessage("Reject button was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Reject button was clicked.", BisLogMessageType.Note);
             await Task.CompletedTask;
         }
 
         private async Task OnShowNotes()
         {
-            Log.recordMessage("Menu: Notes was clicked.", Bis_Log_Message_Type.Note);
-            Log.open();
+            Log.RecordMessage("Menu: Notes was clicked.", BisLogMessageType.Note);
+            Log.Open();
             await Task.CompletedTask;
         }
 
         private async Task OnSearch()
         {
-            Log.recordMessage("Menu: Search was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Menu: Search was clicked.", BisLogMessageType.Note);
             await Task.CompletedTask;
         }
 
         private async Task OnTools()
         {
-            Log.recordMessage("Menu: Tools was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Menu: Tools was clicked.", BisLogMessageType.Note);
             await Task.CompletedTask;
         }
 
         private async Task OnOptions()
         {
-            Log.recordMessage("Menu: Options was clicked.", Bis_Log_Message_Type.Note);
+            Log.RecordMessage("Menu: Options was clicked.", BisLogMessageType.Note);
             await Task.CompletedTask;
         }
 

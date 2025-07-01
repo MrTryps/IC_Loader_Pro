@@ -13,6 +13,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -54,7 +55,7 @@ namespace IC_Loader_Pro
             BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
 
             // Initialize commands
-            RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => true);
+            RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => IsUIEnabled);
             SaveCommand = new RelayCommand(async () => await OnSave(), () => IsUIEnabled);
             SkipCommand = new RelayCommand(async () => await OnSkip(), () => IsUIEnabled);
             RejectCommand = new RelayCommand(async () => await OnReject(), () => IsUIEnabled);
@@ -145,7 +146,6 @@ namespace IC_Loader_Pro
         private void OnProjectOpened(ProjectEventArgs args)
         {
             Module1.Log.RecordMessage("Project opened. Waiting for active map view.", BisLogMessageType.Note );
-            //_ = LoadAndInitializeAsync();
         }
 
         /// <summary>
@@ -156,6 +156,33 @@ namespace IC_Loader_Pro
             lock (_lock) { _isInitialized = false; }
             IsUIEnabled = false;
             StatusMessage = "Please open or create an ArcGIS Pro project.";
+        }
+
+        #region Private Helpers
+
+        /// <summary>
+        /// A simplified helper to force an action onto the ArcGIS Pro UI thread.
+        /// </summary>
+        private Task RunOnUIThread(Action action)
+        {
+            Log.RecordMessage("Attempting to schedule action on UI thread...", BisLogMessageType.Note);
+            return Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, QueuedTask.UIScheduler);
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Determines if the application is currently on the UI thread.
+        /// </summary>
+        private bool OnUIThread
+        {
+            get
+            {
+                if (FrameworkApplication.TestMode)
+                    return QueuedTask.OnWorker;
+                else
+                    return System.Windows.Application.Current.Dispatcher.CheckAccess();
+            }
         }
 
         #endregion
