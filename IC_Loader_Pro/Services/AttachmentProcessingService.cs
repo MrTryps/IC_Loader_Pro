@@ -1,0 +1,130 @@
+﻿using IC_Loader_Pro.Models;
+using IC_Rules_2025;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using static BIS_Log;
+
+namespace IC_Loader_Pro.Services
+{
+    /// <summary>
+    /// A service dedicated to processing email attachments: saving, unzipping, and identifying file sets.
+    /// </summary>
+    public class AttachmentService
+    {
+        private readonly BIS_Log _log;
+        private readonly IC_Rules _rules;
+        private readonly IcNamedTests _namedTests;
+        private readonly BisFileTools _fileTool; // Assuming this service is available
+
+        public AttachmentService(IC_Rules rules, IcNamedTests namedTests, BisFileTools fileTool, BIS_Log log)
+        {
+            _rules = rules;
+            _namedTests = namedTests;
+            _fileTool = fileTool;
+            _log = log;
+        }
+
+        /// <summary>
+        /// Saves all attachments from a given Outlook MailItem to a new, unique temporary folder.
+        /// This version handles duplicate attachment filenames by appending a number.
+        /// </summary>
+        /// <param name="attachments">The collection of attachments from an Outlook.MailItem.</param>
+        /// <returns>The full path to the new temporary directory containing the saved files.</returns>
+        public string SaveAttachmentsToTempFolder(Microsoft.Office.Interop.Outlook.Attachments attachments)
+        {
+            if (attachments == null || attachments.Count == 0)
+            {
+                _log.RecordMessage("Email contains no attachments to save.", BisLogMessageType.Note);
+                return null;
+            }
+
+            string tempFolderPath = Path.Combine(Path.GetTempPath(), "IC_Loader", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempFolderPath);
+            _log.RecordMessage($"Created temporary attachment folder: {tempFolderPath}", BisLogMessageType.Note);
+
+            var savedFilePaths = new List<string>();
+
+            foreach (Microsoft.Office.Interop.Outlook.Attachment attachment in attachments)
+            {
+                try
+                {
+                    string sanitizedFileName = _fileTool.SanitizeFileName(attachment.FileName);
+                    string fullPath = Path.Combine(tempFolderPath, sanitizedFileName);
+                    string baseName = Path.GetFileNameWithoutExtension(sanitizedFileName);
+                    string extension = Path.GetExtension(sanitizedFileName);
+                    int count = 1;
+
+                    // --- NEW: Loop to ensure filename is unique ---
+                    while (File.Exists(fullPath))
+                    {
+                        string newFileName = $"{baseName} ({count++}){extension}";
+                        fullPath = Path.Combine(tempFolderPath, newFileName);
+                    }
+
+                    attachment.SaveAsFile(fullPath);
+                    savedFilePaths.Add(fullPath);
+                }
+                catch (Exception ex)
+                {
+                    _log.RecordError($"Failed to save attachment '{attachment.FileName}'.", ex, "SaveAttachmentsToTempFolder");
+                }
+            }
+
+            _log.RecordMessage($"Successfully saved {savedFilePaths.Count} attachments.", BisLogMessageType.Note);
+            return tempFolderPath;
+        }
+
+        /// <summary>
+        /// Analyzes a folder of attachments to identify GIS datasets.
+        /// Replicates the logic of the legacy returnGisFilesFromFolder function.
+        /// </summary>
+        /// <param name="folderToSearch">The directory containing the saved attachments.</param>
+        /// <param name="icType">The IC Type being processed, used to determine fileset rules.</param>
+        /// <returns>An object containing the results of the analysis.</returns>
+        public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType)
+        {
+            const string methodName = "AnalyzeAttachments";
+
+            var analysisResult = new AttachmentAnalysisResult
+            {
+                // Create a root test result for this phase of the operation
+                TestResult = _namedTests.returnNewTestResult("GIS_Attachments_Tests_Passed", "", IcTestResult.TestType.Deliverable)
+            };        
+
+            try
+            {
+                // Step 1: Unzip any archive files in the folder.
+                // NOTE: This assumes a 'BisUnzipService' or similar tool exists.
+                // var unzipService = new BisUnzipService(_log);
+                // var unzippedFiles = unzipService.UnzipAllInFolder(folderToSearch);
+                _log.RecordMessage("Placeholder: Unzipping files...", BisLogMessageType.Note);
+
+                // Step 2: Use the IC_Rules engine to identify logical file sets.
+                analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
+
+                // Step 3: Create a list of all individual files found.
+                var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch); // Search recursively
+                foreach (string filePath in allFilesFound)
+                {
+                    analysisResult.AllFiles.Add(new AnalyzedFile
+                    {
+                        FileName = Path.GetFileName(filePath),
+                        CurrentPath = Path.GetDirectoryName(filePath),
+                        // The logic for determining OriginalPath from the unzipped file list
+                        // would need to be re-implemented here.
+                        OriginalPath = ""
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.RecordError("An error occurred during attachment analysis.", ex, methodName);
+                analysisResult.TestResult.Passed = false;
+                analysisResult.TestResult.Comments.Add($"Error during attachment analysis: {ex.Message}");
+            }
+
+            return analysisResult;
+        }
+    }
+}

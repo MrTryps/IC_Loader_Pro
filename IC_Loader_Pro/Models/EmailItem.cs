@@ -53,20 +53,29 @@ namespace IC_Loader_Pro.Models
         {
             get => _attachmentCount;
             set => SetProperty(ref _attachmentCount, value);
+        }   
+
+        private string _body;
+        /// <summary>
+        /// The plain text body of the email.
+        /// </summary>
+        public string Body
+        {
+            get => _body;
+            set => SetProperty(ref _body, value);
         }
 
-        private string _PrefID;
-        public string PrefID
+        public class AttachmentItem
         {
-            get => _PrefID;
-            set => SetProperty(ref _PrefID, value);
-        }
+            /// <summary>
+            /// The original filename of the attachment (e.g., "MySite.shp").
+            /// </summary>
+            public string FileName { get; set; }
 
-        private string _DelID;
-        public string DelID
-        {
-            get => _DelID;
-            set => SetProperty(ref _DelID, value);
+            /// <summary>
+            /// The full path to where the attachment was saved on the local disk.
+            /// </summary>
+            public string SavedPath { get; set; }
         }
     }
 }

@@ -16,6 +16,7 @@ namespace IC_Loader_Pro
     {
         // --- MASTER SWITCH ---
         private const bool useGraphApi = false;
+        private Dictionary<string, List<EmailItem>> _emailQueues;
 
         private async Task RefreshICQueuesAsync()
         {
@@ -33,7 +34,13 @@ namespace IC_Loader_Pro
             try
             {
                 // --- Step 2: Background work ---
-                List<ICQueueSummary> summaryList = await GetEmailSummariesAsync();
+                _emailQueues = await GetEmailSummariesAsync();
+                // Populate the UI summary list from the full data.
+                var summaryList = _emailQueues.Select(kvp => new ICQueueSummary
+                {
+                    Name = kvp.Key,
+                    EmailCount = kvp.Value.Count
+                }).ToList();
                 Log.RecordMessage($"Step 2: Background work complete. Found {summaryList.Count} summaries.", BisLogMessageType.Note);
 
                 // --- Step 3: Final UI update ---
@@ -80,10 +87,10 @@ namespace IC_Loader_Pro
         /// <summary>
         /// This helper method is now fully async from top to bottom.
         /// </summary>
-        private async Task<List<ICQueueSummary>> GetEmailSummariesAsync()
+        private async Task<Dictionary<string, List<EmailItem>>> GetEmailSummariesAsync()
         {
             var rulesEngine = Module1.IcRules;
-            var summaries = new List<ICQueueSummary>();
+            var queues = new Dictionary<string, List<EmailItem>>(StringComparer.OrdinalIgnoreCase);
 
             // Determine which service to use
             GraphApiService graphService = null;
@@ -133,21 +140,14 @@ namespace IC_Loader_Pro
                             outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag));
                     }
 
-                    summaries.Add(new ICQueueSummary
-                    {
-                        Name = icType,
-                        EmailCount = emailsInQueue.Count,
-                        PassedCount = 0,
-                        SkippedCount = 0,
-                        FailedCount = 0
-                    });
+                    queues[icType] = emailsInQueue;
                 }
                 catch (Exception ex)
                 {
                     Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(GetEmailSummariesAsync));
                 }
             }
-            return summaries;
+            return queues;
         }
     }
 }

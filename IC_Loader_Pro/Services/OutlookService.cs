@@ -171,5 +171,71 @@ namespace IC_Loader_Pro.Services
                 if (targetStore != null) Marshal.ReleaseComObject(targetStore);
             }
         }
+
+        public EmailItem GetEmailById(string internetMessageId)
+        {
+            const string methodName = "GetEmailById";
+            Outlook.Application outlookApp = null;
+            Outlook.MailItem foundMail = null;
+
+            try
+            {
+                outlookApp = new Outlook.Application();
+
+                // This is the MAPI property schema for the Internet Message ID
+                const string MessageIdPropSchema = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
+
+                // Build the search query using the schema name
+                string filter = $"\"{MessageIdPropSchema}\" = '{internetMessageId}'";
+
+                // AdvancedSearch is the most reliable way to find an item across all folders
+                // The "SCOPE_ALL_STORES" argument tells Outlook to search everywhere.
+                var results = outlookApp.AdvancedSearch("SCOPE_ALL_STORES", filter, false);
+
+                // AdvancedSearch can take a moment; we can add a loop to wait for it.
+                // For now, a simple check of the results.
+                if (results.Results.Count > 0)
+                {
+                    if (results.Results[1] is Outlook.MailItem mailItem)
+                    {
+                        foundMail = mailItem;
+                        // We found it, now build our clean EmailItem model to return
+                        string senderEmail;
+                        if (foundMail.SenderEmailType == "EX")
+                        {
+                            senderEmail = foundMail.Sender?.GetExchangeUser()?.PrimarySmtpAddress;
+                        }
+                        else
+                        {
+                            senderEmail = foundMail.SenderEmailAddress;
+                        }
+
+                        return new EmailItem
+                        {
+                            Emailid = foundMail.PropertyAccessor.GetProperty(MessageIdPropSchema)?.ToString(),
+                            Subject = foundMail.Subject,
+                            ReceivedTime = foundMail.ReceivedTime,
+                            SenderName = foundMail.SenderName,
+                            SenderEmailAddress = senderEmail,
+                            AttachmentCount = foundMail.Attachments.Count,
+                            // You can populate other properties here as needed
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"Error searching for email with ID '{internetMessageId}'.", ex, methodName);
+                throw;
+            }
+            finally
+            {
+                // Clean up COM objects
+                if (foundMail != null) Marshal.ReleaseComObject(foundMail);
+                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+            }
+
+            return null; // Return null if not found
+        }
     }
 }

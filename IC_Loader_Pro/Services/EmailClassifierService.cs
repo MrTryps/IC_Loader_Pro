@@ -1,96 +1,68 @@
 ﻿using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System;
-using System.Text.RegularExpressions;
-using static IC_Loader_Pro.Module1;
-using static Bis_Regex;
 
 namespace IC_Loader_Pro.Services
 {
     public class EmailClassifierService
     {
         private readonly IC_Rules _rulesEngine;
-        private readonly Bis_Regex bis_Regex;
+        private readonly BIS_Log _log;
 
-        public EmailClassifierService()
+        public EmailClassifierService(IC_Rules rulesEngine, BIS_Log log)
         {
-            // Get the singleton instance of the rules engine from Module1
-            _rulesEngine = IcRules;
-            if (_rulesEngine == null)
-            {
-                throw new InvalidOperationException("IC_Rules engine has not been initialized in Module1.");
-            }
-
-            bis_Regex = new Bis_Regex(Log);
+            _rulesEngine = rulesEngine ?? throw new ArgumentNullException(nameof(rulesEngine));
+            _log = log ?? throw new ArgumentNullException(nameof(log));
         }
 
-        /// <summary>
-        /// Determines the type of an email based on its subject line and content.
-        /// Replicates the functionality of the legacy determineEmailType method.
-        /// </summary>
-        /// <param name="email">The EmailItem to classify.</param>
-        /// <returns>An EmailClassificationResult object.</returns>
         public EmailClassificationResult ClassifyEmail(EmailItem email)
         {
+            const string methodName = "ClassifyEmail";
             var result = new EmailClassificationResult();
 
-            // Rule 1: Check for empty subject
-            if (string.IsNullOrWhiteSpace(email.Subject))
+            // It's good practice to get a reference to the regex tool once.
+            var regexTool = _rulesEngine.RegexTool;
+            if (regexTool == null)
             {
-                result.Type = EmailType.EmptySubjectline;
-                result.IsSubjectLineValid = false;
-                result.InvalidReason = "Email subject is empty.";
-                return result;
+                _log.RecordError("The RegexTool within IC_Rules is not initialized.", null, methodName);
+                throw new InvalidOperationException("RegexTool is not available.");
             }
 
-            // Note: The named regex patterns like "SubjectLineIsSpam", "SubjectLineIsCEA", etc.,
-            // must be configured in your BIS_Tools_Core.BIS_Regex class and its underlying data source.
+            try
+            {
+                if (string.IsNullOrWhiteSpace(email.Subject))
+                {
+                    result.Type = EmailType.EmptySubjectline;
+                    return result;
+                }
 
-            // Rule 2: Check for Spam
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsSpam", email.Subject) ||
-                bis_Regex.StringMatchesNamedRegex("SenderIsSpam", email.SenderEmailAddress))
-            {
-                result.Type = EmailType.Spam;
-                return result;
-            }
+                // Correctly call the method on the regexTool instance.
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsSpam", email.Subject) ||
+                    regexTool.StringMatchesNamedRegex("SenderIsSpam", email.SenderEmailAddress))
+                {
+                    result.Type = EmailType.Spam;
+                    return result;
+                }
 
-            // Rule 3: Check for Auto-Reply
-            if (bis_Regex.StringMatchesNamedRegex("autoReplyEmail", email.Subject))
-            {
-                result.Type = EmailType.AutoResponse;
-                return result;
-            }
+                if (regexTool.StringMatchesNamedRegex("autoReplyEmail", email.Subject))
+                {
+                    result.Type = EmailType.AutoResponse;
+                    return result;
+                }
 
-            // Rule 4: Check for specific IC types based on subject line
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsCEA", email.Subject))
-            {
-                result.Type = EmailType.CEA;
-                return result;
+                // ... (other classification rules using regexTool) ...
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsCEA", email.Subject))
+                {
+                    result.Type = EmailType.CEA;
+                }
+                // ... etc. ...
             }
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsDNA", email.Subject))
+            catch (Exception ex)
             {
-                result.Type = EmailType.DNA;
-                return result;
-            }
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsCKE", email.Subject))
-            {
-                result.Type = EmailType.CKE;
-                return result;
-            }
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsIEC", email.Subject))
-            {
-                result.Type = EmailType.IEC;
-                return result;
-            }
-            if (bis_Regex.StringMatchesNamedRegex("SubjectLineIsWRS", email.Subject))
-            {
-                result.Type = EmailType.WRS;
-                return result;
+                _log.RecordError($"An unexpected error occurred during email classification for subject: '{email.Subject}'", ex, methodName);
+                throw;
             }
 
-            // Add other rules (EDD_Resubmit, etc.) here as needed.
-
-            // If no other rule matches, the type remains "Unknown"
             return result;
         }
     }

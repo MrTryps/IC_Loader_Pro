@@ -13,6 +13,7 @@ namespace IC_Loader_Pro
         private static BIS_Log _log;
         private static IC_Rules _icRules = null;
         private static BIS_DB_PostGre _postGreTool = null;
+        private static Bis_Regex _regexTool = null;
 
         /// <summary>
         /// Retrieve the singleton instance to this module here
@@ -43,6 +44,11 @@ namespace IC_Loader_Pro
         /// Guaranteed to be available after the module has been initialized.
         /// </summary>
         public static BIS_DB_PostGre PostGreTool => _postGreTool;
+
+        /// <summary>
+        /// Retrieve the singleton instance of the Regex service.
+        /// </summary>
+        public static Bis_Regex RegexTool => _regexTool;
 
         #endregion
 
@@ -77,7 +83,18 @@ namespace IC_Loader_Pro
 
             System.Diagnostics.Debug.WriteLine("Module.Initialize: BIS_Log service created.");
 
-  // Initialize the Database Tool
+            // Initialize the Regex Tool
+            try
+            {
+                _regexTool = new Bis_Regex(_log);
+            }
+            catch (Exception ex)
+            {
+                _log.RecordError("FATAL: Failed to create Bis_Regex service in Module.Initialize", ex, nameof(Initialize));
+                return false;
+            }
+
+            // Initialize the Database Tool
             try
             {
                 _postGreTool = new BIS_DB_PostGre(_log);
