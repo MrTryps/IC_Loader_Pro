@@ -1,9 +1,12 @@
 ﻿using IC_Loader_Pro.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using static BIS_Log;
+using static IC_Loader_Pro.Models.EmailItem;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
@@ -172,70 +175,158 @@ namespace IC_Loader_Pro.Services
             }
         }
 
+        /// <summary>
+        /// Retrieves a fully populated EmailItem by its unique Internet Message ID.
+        /// </summary>
         public EmailItem GetEmailById(string internetMessageId)
         {
             const string methodName = "GetEmailById";
             Outlook.Application outlookApp = null;
             Outlook.MailItem foundMail = null;
+            string tempAttachmentPath = null;
 
             try
             {
                 outlookApp = new Outlook.Application();
 
-                // This is the MAPI property schema for the Internet Message ID
-                const string MessageIdPropSchema = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
+                // --- THE FIX ---
+                // Sanitize the ID by removing the angle brackets before searching.
+                string sanitizedId = internetMessageId.Trim('<', '>');
 
-                // Build the search query using the schema name
-                string filter = $"\"{MessageIdPropSchema}\" = '{internetMessageId}'";
+                foundMail = FindMailItemById(outlookApp, sanitizedId);
 
-                // AdvancedSearch is the most reliable way to find an item across all folders
-                // The "SCOPE_ALL_STORES" argument tells Outlook to search everywhere.
-                var results = outlookApp.AdvancedSearch("SCOPE_ALL_STORES", filter, false);
-
-                // AdvancedSearch can take a moment; we can add a loop to wait for it.
-                // For now, a simple check of the results.
-                if (results.Results.Count > 0)
+                if (foundMail != null)
                 {
-                    if (results.Results[1] is Outlook.MailItem mailItem)
-                    {
-                        foundMail = mailItem;
-                        // We found it, now build our clean EmailItem model to return
-                        string senderEmail;
-                        if (foundMail.SenderEmailType == "EX")
-                        {
-                            senderEmail = foundMail.Sender?.GetExchangeUser()?.PrimarySmtpAddress;
-                        }
-                        else
-                        {
-                            senderEmail = foundMail.SenderEmailAddress;
-                        }
+                    // We found it, now build the complete EmailItem
+                    string senderEmail = GetSenderAddress(foundMail);
+                    tempAttachmentPath = SaveAttachmentsToTempFolder(foundMail.Attachments);
 
-                        return new EmailItem
-                        {
-                            Emailid = foundMail.PropertyAccessor.GetProperty(MessageIdPropSchema)?.ToString(),
-                            Subject = foundMail.Subject,
-                            ReceivedTime = foundMail.ReceivedTime,
-                            SenderName = foundMail.SenderName,
-                            SenderEmailAddress = senderEmail,
-                            AttachmentCount = foundMail.Attachments.Count,
-                            // You can populate other properties here as needed
-                        };
+                    var emailItem = new EmailItem
+                    {
+                        Emailid = internetMessageId, // Store the original, full ID
+                        Subject = foundMail.Subject,
+                        ReceivedTime = foundMail.ReceivedTime,
+                        SenderName = foundMail.SenderName,
+                        SenderEmailAddress = senderEmail,
+                        Body = foundMail.Body
+                    };
+
+                    if (Directory.Exists(tempAttachmentPath))
+                    {
+                        emailItem.Attachments = Directory.GetFiles(tempAttachmentPath)
+                            .Select(f => new AttachmentItem { FileName = Path.GetFileName(f), SavedPath = f })
+                            .ToList();
                     }
+
+                    return emailItem;
                 }
             }
             catch (Exception ex)
             {
-                Log.RecordError($"Error searching for email with ID '{internetMessageId}'.", ex, methodName);
+                Log.RecordError($"Error processing email with ID '{internetMessageId}'.", ex, methodName);
                 throw;
             }
             finally
             {
-                // Clean up COM objects
+                // Ensure all COM objects and temp files are cleaned up
                 if (foundMail != null) Marshal.ReleaseComObject(foundMail);
                 if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+                if (Directory.Exists(tempAttachmentPath))
+                {
+                    try { Directory.Delete(tempAttachmentPath, true); }
+                    catch (Exception ex) { Log.RecordError($"Failed to delete temp folder: {tempAttachmentPath}", ex, "GetEmailById_Finally"); }
+                }
             }
 
-            return null; // Return null if not found
+            // If we get here, the email was not found
+            throw new FileNotFoundException($"An email with the ID '{internetMessageId}' could not be found using AdvancedSearch.");
         }
+
+        #region Private Helpers
+
+        /// <summary>
+        /// Finds a single email using the fast AdvancedSearch method, waiting for it to complete.
+        /// </summary>
+        private Outlook.MailItem FindMailItemById(Outlook.Application app, string sanitizedId)
+        {
+            const string MessageIdPropSchema = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
+            string filter = $"{MessageIdPropSchema} = '{sanitizedId}'";
+
+            var searchCompleteEvent = new AutoResetEvent(false);
+            Outlook.Search advancedSearch = null;
+            Outlook.MailItem result = null;
+
+            // Define the event handler within the method's scope
+            void SearchCompleteHandler(Outlook.Search Search)
+            {
+                advancedSearch = Search;
+                searchCompleteEvent.Set(); // Signal that the search has finished
+            }
+            ;
+
+            app.AdvancedSearchComplete += SearchCompleteHandler;
+
+            try
+            {
+                app.AdvancedSearch("SCOPE_ALL_STORES", filter, false, "GetByIdSearchTag");
+
+                // Wait for the event to be signaled, with a reasonable timeout
+                if (searchCompleteEvent.WaitOne(15000) && advancedSearch != null && advancedSearch.Results.Count > 0)
+                {
+                    // The COM object is returned, caller is responsible for releasing it
+                    result = advancedSearch.Results[1] as Outlook.MailItem;
+                }
+                else if (advancedSearch == null)
+                {
+                    Log.RecordError("Outlook advanced search timed out.", null, "FindMailItemById");
+                }
+            }
+            finally
+            {
+                // Unsubscribe from the event to prevent memory leaks
+                app.AdvancedSearchComplete -= SearchCompleteHandler;
+                if (advancedSearch != null) Marshal.ReleaseComObject(advancedSearch);
+                searchCompleteEvent.Close();
+            }
+
+            return result;
+        }
+
+        private string GetSenderAddress(Outlook.MailItem mailItem)
+        {
+            if (mailItem.SenderEmailType == "EX")
+                return mailItem.Sender?.GetExchangeUser()?.PrimarySmtpAddress;
+
+            return mailItem.SenderEmailAddress;
+        }
+
+        private string SaveAttachmentsToTempFolder(Outlook.Attachments attachments)
+        {
+            string tempFolderPath = Path.Combine(Path.GetTempPath(), "IC_Loader", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempFolderPath);
+
+            if (attachments == null || attachments.Count == 0) return tempFolderPath;
+
+            foreach (Outlook.Attachment attachment in attachments)
+            {
+                try
+                {
+                    string fullPath = Path.Combine(tempFolderPath, attachment.FileName);
+                    int count = 1;
+                    while (File.Exists(fullPath))
+                    {
+                        string newFileName = $"{Path.GetFileNameWithoutExtension(attachment.FileName)} ({count++}){Path.GetExtension(attachment.FileName)}";
+                        fullPath = Path.Combine(tempFolderPath, newFileName);
+                    }
+                    attachment.SaveAsFile(fullPath);
+                }
+                catch (Exception ex)
+                {
+                    Log.RecordError($"Failed to save attachment '{attachment.FileName}'.", ex, "SaveAttachmentsToTempFolder");
+                }
+            }
+            return tempFolderPath;
+        }
+        #endregion
     }
 }

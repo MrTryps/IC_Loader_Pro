@@ -65,6 +65,11 @@ namespace IC_Loader_Pro.Models
             set => SetProperty(ref _body, value);
         }
 
+        /// <summary>
+        /// A list of attachments that have been saved to a temporary location.
+        /// </summary>
+        public List<AttachmentItem> Attachments { get; set; } = new List<AttachmentItem>();
+
         public class AttachmentItem
         {
             /// <summary>

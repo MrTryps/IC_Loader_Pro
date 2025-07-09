@@ -13,7 +13,11 @@ namespace IC_Loader_Pro
         private static BIS_Log _log;
         private static IC_Rules _icRules = null;
         private static BIS_DB_PostGre _postGreTool = null;
+        private static BisDbNjems _njemsTool;
+        private static BisDbCompass _compassTool;
+        private static BisDbAccess _accessTool;
         private static Bis_Regex _regexTool = null;
+        private static BisFileTools _fileTool = null;
 
         /// <summary>
         /// Retrieve the singleton instance to this module here
@@ -45,10 +49,16 @@ namespace IC_Loader_Pro
         /// </summary>
         public static BIS_DB_PostGre PostGreTool => _postGreTool;
 
+        public static BisDbNjems NjemsTool => _njemsTool;
+        public static BisDbCompass CompassTool => _compassTool;
+        public static BisDbAccess AccessTool => _accessTool;
+
         /// <summary>
         /// Retrieve the singleton instance of the Regex service.
         /// </summary>
         public static Bis_Regex RegexTool => _regexTool;
+
+        public static BisFileTools FileTool => _fileTool;
 
         #endregion
 
@@ -83,6 +93,16 @@ namespace IC_Loader_Pro
 
             System.Diagnostics.Debug.WriteLine("Module.Initialize: BIS_Log service created.");
 
+            try
+            {
+                _fileTool = new BisFileTools(_log);
+            }
+            catch (Exception ex)
+            {
+                _log.RecordError("FATAL: Failed to create BisFileTools service.", ex, nameof(Initialize));
+                return false;
+            }
+
             // Initialize the Regex Tool
             try
             {
@@ -107,10 +127,15 @@ namespace IC_Loader_Pro
                 System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
                 _log.RecordError($"FATAL: {errorMessage}",ex, nameof(Initialize));
             }
+
+            _njemsTool = new BisDbNjems(_log);
+            _compassTool = new BisDbCompass(_log);
+            _accessTool = new BisDbAccess(_log);
+
             // Initialize the Rules Engine
             try
             {
-                _icRules = new IC_Rules(_log, _postGreTool);
+                _icRules = new IC_Rules(_log, _postGreTool,_compassTool,_njemsTool,_accessTool , _fileTool,_regexTool);
                 System.Diagnostics.Debug.WriteLine("Module.Initialize: IC_Rules service created successfully.");
             }
             catch (Exception ex)

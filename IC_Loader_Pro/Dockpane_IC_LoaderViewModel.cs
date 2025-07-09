@@ -81,8 +81,21 @@ namespace IC_Loader_Pro
             get => _selectedQueue;
             set
             {
+                if (_selectedQueue == value) return; // Don't re-process if the same queue is clicked again
+
+                SetProperty(ref _selectedQueue, value);
+
+                // If the new selection is not null, kick off the processing.
+                // The underscore discards the returned Task, which is a standard
+                // way to call an async method from a synchronous property setter.
+                if (value != null)
+                {
+                    _ = ProcessSelectedQueueAsync();
+                }
+
+
                 // SetProperty is a helper method from the DockPane base class
-                SetProperty(ref _selectedQueue, value, () => SelectedIcType);
+               // SetProperty(ref _selectedQueue, value, () => SelectedIcType);
                 // When a queue is selected, we can trigger logic here later
             }
         }

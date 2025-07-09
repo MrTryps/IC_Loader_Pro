@@ -1,14 +1,17 @@
 ﻿using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models;
+using IC_Loader_Pro.Services;
+using IC_Rules_2025;
+using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using static IC_Loader_Pro.Module1;
-using IC_Loader_Pro.Services;
-using IC_Loader_Pro.Models;
-using BIS_Tools_DataModels_2025;
 using static BIS_Log;
+using static IC_Loader_Pro.Module1;
+using Exception = System.Exception;
 
 namespace IC_Loader_Pro
 {
@@ -149,5 +152,62 @@ namespace IC_Loader_Pro
             }
             return queues;
         }
+
+        /// <summary>
+        /// Kicks off the processing for the currently selected IC queue.
+        /// </summary>
+        private async Task ProcessSelectedQueueAsync()
+        {                      
+            if (SelectedIcType == null)
+            {
+                StatusMessage = "No queue selected.";
+                return;
+            }
+
+            // Find the list of emails for the selected queue
+            if (!_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
+            {
+                StatusMessage = $"Queue '{SelectedIcType.Name}' is empty.";
+                return;
+            }
+
+            // Get the first email from the list
+            var firstEmail = emailsToProcess.First();
+            StatusMessage = $"Loading email: {firstEmail.Subject}...";
+
+            try
+            {
+                // Instantiate the services needed for processing
+                var namedTests = new IcNamedTests(Log, PostGreTool);
+                var classifier = new EmailClassifierService(IcRules, Log);
+                var attachmentService = new AttachmentService(IcRules, namedTests,FileTool, Log);
+
+                // This is the main orchestrator for processing a single email
+                var processingService = new EmailProcessingService(IcRules, namedTests,Log);
+
+                // Process the single email
+                IcTestResult finalResult = await processingService.ProcessEmailAsync(firstEmail.Emailid);
+
+                // Update the UI with the results of the processing
+                if (finalResult.Passed)
+                {
+                    StatusMessage = "Email processed successfully.";
+                }
+                else
+                {
+                    // Join all comments from the test result hierarchy for a detailed status
+                    var allComments = finalResult.Comments.Concat(finalResult.SubTestResults.SelectMany(sr => sr.Comments));
+                    StatusMessage = $"Processing failed: {string.Join(" ", allComments)}";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = "An error occurred while processing the email.";
+                Log.RecordError($"Error during ProcessSelectedQueueAsync for email ID {firstEmail.Emailid}", ex, "ProcessSelectedQueueAsync");
+            }
+        }
+
+
+
     }
 }
