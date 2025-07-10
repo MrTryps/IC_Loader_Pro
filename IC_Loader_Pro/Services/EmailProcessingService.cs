@@ -3,6 +3,7 @@ using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime;
 using System.Threading.Tasks;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
@@ -35,7 +36,7 @@ namespace IC_Loader_Pro.Services
         /// Replicates the logic of the legacy processEmail function.
         /// </summary>
         /// <param name="emailId">The unique identifier of the email to process.</param>
-        public async Task<IcTestResult> ProcessEmailAsync(string emailId)
+        public async Task<IcTestResult> ProcessEmailAsync(string emailId, string folderPath, string storeName)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailId}", BisLogMessageType.Note);
 
@@ -49,7 +50,9 @@ namespace IC_Loader_Pro.Services
             {
                 // Note: This part will need to be adapted depending on whether you use
                 // OutlookService or GraphApiService. This uses a placeholder for now.
-                emailToProcess = _outlookService.GetEmailById(emailId);
+                // Use QueuedTask.Run to ensure the Outlook call happens on a background thread
+
+                emailToProcess = await ArcGIS.Desktop.Framework.Threading.Tasks.QueuedTask.Run(() => _outlookService.GetEmailById(folderPath, emailId, storeName));
                 if (emailToProcess == null)
                 {
                     throw new FileNotFoundException($"Email with ID '{emailId}' could not be found.");

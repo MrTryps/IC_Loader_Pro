@@ -173,7 +173,10 @@ namespace IC_Loader_Pro
 
             // Get the first email from the list
             var firstEmail = emailsToProcess.First();
+            var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
             StatusMessage = $"Loading email: {firstEmail.Subject}...";
+            string fullOutlookPath = icSetting.OutlookInboxFolderPath;
+            var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 
             try
             {
@@ -186,7 +189,7 @@ namespace IC_Loader_Pro
                 var processingService = new EmailProcessingService(IcRules, namedTests,Log);
 
                 // Process the single email
-                IcTestResult finalResult = await processingService.ProcessEmailAsync(firstEmail.Emailid);
+                IcTestResult finalResult = await processingService.ProcessEmailAsync(firstEmail.Emailid, folderPath, storeName);
 
                 // Update the UI with the results of the processing
                 if (finalResult.Passed)

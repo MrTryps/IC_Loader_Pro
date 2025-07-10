@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using static BIS_Log;
 using static IC_Loader_Pro.Models.EmailItem;
@@ -14,6 +15,10 @@ namespace IC_Loader_Pro.Services
 {
     internal class OutlookService
     {
+        // The DASL property name for the Message-ID.
+        //private const string _messageIdPropSchema = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
+        private const string PR_INTERNET_MESSAGE_ID = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
+
         /// <summary>
         /// Gets emails from a folder, applying a three-state test filter.
         /// </summary>
@@ -121,7 +126,7 @@ namespace IC_Loader_Pro.Services
         /// <summary>
         /// Parses a path like "\\Store Name\Folder\Subfolder" into its components.
         /// </summary>
-        private (string storeName, string folderPath) ParseOutlookPath(string fullPath)
+        public static (string storeName, string folderPath) ParseOutlookPath(string fullPath)
         {
             var parts = fullPath.TrimStart('\\').Split(new[] { '\\' }, 2);
             if (parts.Length < 2)
@@ -176,121 +181,212 @@ namespace IC_Loader_Pro.Services
         }
 
         /// <summary>
-        /// Retrieves a fully populated EmailItem by its unique Internet Message ID.
+        /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
         /// </summary>
-        public EmailItem GetEmailById(string internetMessageId)
+        /// <param name="folderPath">The path to the folder to search in (e.g., "Inbox/My Project").</param>
+        /// <param name="messageId">The Internet Message ID of the email to find.</param>
+        /// <returns>A populated EmailItem object, or null if the email is not found.</returns>
+        /// <summary>
+        /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
+        /// </summary>
+        public EmailItem GetEmailById(string folderPath, string messageId, string storeName = null)
         {
-            const string methodName = "GetEmailById";
+            // --- Start of Diagnostic Logging ---
+            Log.RecordMessage($"Attempting to get email. ID: '{messageId}', Folder Path: '{folderPath}', Store: '{storeName ?? "Default"}'.", BisLogMessageType.Note);
+            // --- End of Diagnostic Logging ---
+
             Outlook.Application outlookApp = null;
-            Outlook.MailItem foundMail = null;
-            string tempAttachmentPath = null;
+            Outlook.NameSpace mapiNamespace = null;
+            Outlook.MAPIFolder targetFolder = null;
+            Outlook.MailItem mailItem = null;
+            EmailItem result = null;
+
+            // It's possible the message ID is missing the angle brackets, which are often required.
+            if (!messageId.StartsWith("<")) messageId = "<" + messageId;
+            if (!messageId.EndsWith(">")) messageId = messageId + ">";
 
             try
             {
                 outlookApp = new Outlook.Application();
+                mapiNamespace = outlookApp.GetNamespace("MAPI");
 
-                // --- THE FIX ---
-                // Sanitize the ID by removing the angle brackets before searching.
-                string sanitizedId = internetMessageId.Trim('<', '>');
-
-                foundMail = FindMailItemById(outlookApp, sanitizedId);
-
-                if (foundMail != null)
+                string actualStoreName = storeName;
+                if (string.IsNullOrEmpty(actualStoreName))
                 {
-                    // We found it, now build the complete EmailItem
-                    string senderEmail = GetSenderAddress(foundMail);
-                    tempAttachmentPath = SaveAttachmentsToTempFolder(foundMail.Attachments);
+                    actualStoreName = mapiNamespace.DefaultStore.DisplayName;
+                    // --- Start of Diagnostic Logging ---
+                    Log.RecordMessage($"No store name provided. Defaulting to: '{actualStoreName}'.", BisLogMessageType.Note);
+                    // --- End of Diagnostic Logging ---
+                }
 
-                    var emailItem = new EmailItem
-                    {
-                        Emailid = internetMessageId, // Store the original, full ID
-                        Subject = foundMail.Subject,
-                        ReceivedTime = foundMail.ReceivedTime,
-                        SenderName = foundMail.SenderName,
-                        SenderEmailAddress = senderEmail,
-                        Body = foundMail.Body
-                    };
+                targetFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, folderPath);
 
-                    if (Directory.Exists(tempAttachmentPath))
-                    {
-                        emailItem.Attachments = Directory.GetFiles(tempAttachmentPath)
-                            .Select(f => new AttachmentItem { FileName = Path.GetFileName(f), SavedPath = f })
-                            .ToList();
-                    }
+                if (targetFolder == null)
+                {
+                    // --- Start of Diagnostic Logging ---
+                    Log.RecordError($"GetFolderFromPath returned null. Could not find folder '{folderPath}' in store '{actualStoreName}'.", null, nameof(GetEmailById));
+                    // --- End of Diagnostic Logging ---
+                    return null;
+                }
 
-                    return emailItem;
+                // --- Start of Diagnostic Logging ---
+                Log.RecordMessage($"Successfully found folder '{targetFolder.FolderPath}'. Now searching for email.", BisLogMessageType.Note);
+                // --- End of Diagnostic Logging ---
+
+                string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
+
+                // --- Start of Diagnostic Logging ---
+                Log.RecordMessage($"Using DASL filter: {filter}", BisLogMessageType.Note);
+                // --- End of Diagnostic Logging ---
+
+                object item = targetFolder.Items.Find(filter);
+
+                if (item is Outlook.MailItem foundMailItem)
+                {
+                    mailItem = foundMailItem;
+                    result = MapToEmailItem(mailItem);
+                    // --- Start of Diagnostic Logging ---
+                    Log.RecordMessage($"SUCCESS: Found email with subject: '{result.Subject}'.", BisLogMessageType.Note);
+                    // --- End of Diagnostic Logging ---
+                }
+                else
+                {
+                    // --- Start of Diagnostic Logging ---
+                    Log.RecordError($"The DASL query returned null. The email with ID '{messageId}' was not found in the folder '{targetFolder.FolderPath}'.", null, nameof(GetEmailById));
+                    // --- End of Diagnostic Logging ---
                 }
             }
             catch (Exception ex)
             {
-                Log.RecordError($"Error processing email with ID '{internetMessageId}'.", ex, methodName);
-                throw;
+                Log.RecordError($"An exception occurred within GetEmailById.", ex, nameof(GetEmailById));
             }
             finally
             {
-                // Ensure all COM objects and temp files are cleaned up
-                if (foundMail != null) Marshal.ReleaseComObject(foundMail);
+                if (mailItem != null) Marshal.ReleaseComObject(mailItem);
+                if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
+                if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
                 if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
-                if (Directory.Exists(tempAttachmentPath))
-                {
-                    try { Directory.Delete(tempAttachmentPath, true); }
-                    catch (Exception ex) { Log.RecordError($"Failed to delete temp folder: {tempAttachmentPath}", ex, "GetEmailById_Finally"); }
-                }
-            }
-
-            // If we get here, the email was not found
-            throw new FileNotFoundException($"An email with the ID '{internetMessageId}' could not be found using AdvancedSearch.");
-        }
-
-        #region Private Helpers
-
-        /// <summary>
-        /// Finds a single email using the fast AdvancedSearch method, waiting for it to complete.
-        /// </summary>
-        private Outlook.MailItem FindMailItemById(Outlook.Application app, string sanitizedId)
-        {
-            const string MessageIdPropSchema = "http://schemas.microsoft.com/mapi/proptag/0x1035001F";
-            string filter = $"{MessageIdPropSchema} = '{sanitizedId}'";
-
-            var searchCompleteEvent = new AutoResetEvent(false);
-            Outlook.Search advancedSearch = null;
-            Outlook.MailItem result = null;
-
-            // Define the event handler within the method's scope
-            void SearchCompleteHandler(Outlook.Search Search)
-            {
-                advancedSearch = Search;
-                searchCompleteEvent.Set(); // Signal that the search has finished
-            }
-            ;
-
-            app.AdvancedSearchComplete += SearchCompleteHandler;
-
-            try
-            {
-                app.AdvancedSearch("SCOPE_ALL_STORES", filter, false, "GetByIdSearchTag");
-
-                // Wait for the event to be signaled, with a reasonable timeout
-                if (searchCompleteEvent.WaitOne(15000) && advancedSearch != null && advancedSearch.Results.Count > 0)
-                {
-                    // The COM object is returned, caller is responsible for releasing it
-                    result = advancedSearch.Results[1] as Outlook.MailItem;
-                }
-                else if (advancedSearch == null)
-                {
-                    Log.RecordError("Outlook advanced search timed out.", null, "FindMailItemById");
-                }
-            }
-            finally
-            {
-                // Unsubscribe from the event to prevent memory leaks
-                app.AdvancedSearchComplete -= SearchCompleteHandler;
-                if (advancedSearch != null) Marshal.ReleaseComObject(advancedSearch);
-                searchCompleteEvent.Close();
             }
 
             return result;
         }
+        #region Private Helpers
+        /// <summary>
+        /// Maps an Outlook.MailItem to the custom EmailItem model and saves attachments.
+        /// </summary>
+        /// <param name="mailItem">The source Outlook.MailItem.</param>
+        /// <returns>A new, populated EmailItem object.</returns>
+        private EmailItem MapToEmailItem(Outlook.MailItem mailItem)
+        {
+            if (mailItem == null) return null;
+
+            var emailItem = new EmailItem
+            {
+                // Use the PropertyAccessor to get the exact Message ID.
+                Emailid = mailItem.PropertyAccessor.GetProperty(PR_INTERNET_MESSAGE_ID) as string,
+                Subject = mailItem.Subject,
+                ReceivedTime = mailItem.ReceivedTime,
+                SenderName = mailItem.SenderName,
+                SenderEmailAddress = mailItem.SenderEmailAddress,
+                AttachmentCount = mailItem.Attachments.Count,
+                Body = mailItem.Body
+            };
+
+            // Process and save attachments
+            if (mailItem.Attachments.Count > 0)
+            {
+                // Create a temporary directory to store attachments for this email.
+                string tempAttachmentPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempAttachmentPath);
+
+                foreach (Outlook.Attachment attachment in mailItem.Attachments)
+                {
+                    string savedPath = Path.Combine(tempAttachmentPath, attachment.FileName);
+                    attachment.SaveAsFile(savedPath);
+
+                    emailItem.Attachments.Add(new EmailItem.AttachmentItem
+                    {
+                        FileName = attachment.FileName,
+                        SavedPath = savedPath
+                    });
+
+                    // Release the individual attachment COM object.
+                    Marshal.ReleaseComObject(attachment);
+                }
+            }
+
+            return emailItem;
+        }
+
+        //private Outlook.MailItem FindMailItemById(Outlook.Application app, string sanitizedId)
+        //{
+        //    const string methodName = "FindMailItemById";
+
+        //    // --- THE CORRECTED FILTER ---
+        //    // This syntax uses "ci_phrasematch" for an indexed search, which is more robust.
+        //    // It correctly wraps the schema name in double quotes and the ID in single quotes.
+        //    string filter = $"\"{_messageIdPropSchema}\" ci_phrasematch '{sanitizedId}'";
+
+        //    var searchCompleteEvent = new AutoResetEvent(false);
+        //    Outlook.Search advancedSearch = null;
+        //    Outlook.MailItem result = null;
+
+        //    void SearchCompleteHandler(Outlook.Search Search)
+        //    {
+        //        advancedSearch = Search;
+        //        searchCompleteEvent.Set();
+        //    }
+        //    ;
+
+        //    app.AdvancedSearchComplete += SearchCompleteHandler;
+
+        //    try
+        //    {
+        //        // Execute the search across all folders
+        //        app.AdvancedSearch("SCOPE_ALL_STORES", filter, false, "GetByIdSearchTag");
+
+        //        if (!searchCompleteEvent.WaitOne(15000)) // 15-second timeout
+        //        {
+        //            Log.RecordError("Outlook advanced search timed out.", null, methodName);
+        //            return null;
+        //        }
+
+        //        if (advancedSearch?.Results?.Count > 0)
+        //        {
+        //            // We must iterate through results to be safe
+        //            foreach (var item in advancedSearch.Results)
+        //            {
+        //                if (item is Outlook.MailItem mailItem)
+        //                {
+        //                    // Double-check the ID to be certain it's the right one
+        //                    string currentId = mailItem.PropertyAccessor.GetProperty(_messageIdPropSchema)?.ToString()?.Trim('<', '>');
+        //                    if (currentId != null && currentId.Equals(sanitizedId, StringComparison.OrdinalIgnoreCase))
+        //                    {
+        //                        result = mailItem;
+        //                        break; // Exit the loop once found
+        //                    }
+        //                    else
+        //                    {
+        //                        Marshal.ReleaseComObject(mailItem); // Release if not a match
+        //                    }
+        //                }
+        //            }
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError($"AdvancedSearch failed with filter: {filter}", ex, methodName);
+        //        throw;
+        //    }
+        //    finally
+        //    {
+        //        app.AdvancedSearchComplete -= SearchCompleteHandler;
+        //        if (advancedSearch != null) Marshal.ReleaseComObject(advancedSearch);
+        //        searchCompleteEvent.Close();
+        //    }
+
+        //    return result;
+        //}
 
         private string GetSenderAddress(Outlook.MailItem mailItem)
         {
@@ -327,6 +423,6 @@ namespace IC_Loader_Pro.Services
             }
             return tempFolderPath;
         }
-        #endregion
+#endregion
     }
 }
