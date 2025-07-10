@@ -58,7 +58,7 @@ namespace IC_Loader_Pro
                             _ListOfIcEmailTypeSummaries.Add(summary);
                         }
                     }
-
+                    Log.RecordMessage($"Verification: _ListOfIcEmailTypeSummaries now contains {_ListOfIcEmailTypeSummaries.Count} items.", BisLogMessageType.Note);
                     SelectedIcType = PublicListOfIcEmailTypeSummaries.FirstOrDefault();
                     Log.RecordMessage($"Successfully loadedxxx {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
 
@@ -158,11 +158,17 @@ namespace IC_Loader_Pro
         /// </summary>
         private async Task ProcessSelectedQueueAsync()
         {                      
+            CurrentEmailSubject = "Loading...";
+            CurrentPrefId = "";
+            CurrentDelId = "";
+
             if (SelectedIcType == null)
             {
                 StatusMessage = "No queue selected.";
+                CurrentEmailSubject = "No email selected"; // Reset subject
                 return;
             }
+
 
             // Find the list of emails for the selected queue
             if (!_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
@@ -174,7 +180,8 @@ namespace IC_Loader_Pro
             // Get the first email from the list
             var firstEmail = emailsToProcess.First();
             var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-            StatusMessage = $"Loading email: {firstEmail.Subject}...";
+            //StatusMessage = $"Loading email: {firstEmail.Subject}...";
+            CurrentEmailSubject = firstEmail.Subject;
             string fullOutlookPath = icSetting.OutlookInboxFolderPath;
             var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 

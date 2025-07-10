@@ -42,6 +42,27 @@ namespace IC_Loader_Pro
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
+        private string _currentEmailSubject = "No email selected";
+        public string CurrentEmailSubject
+        {
+            get => _currentEmailSubject;
+            set => SetProperty(ref _currentEmailSubject, value);
+        }
+
+        private string _currentPrefId;
+        public string CurrentPrefId
+        {
+            get => _currentPrefId;
+            set => SetProperty(ref _currentPrefId, value);
+        }
+
+        private string _currentDelId;
+        public string CurrentDelId
+        {
+            get => _currentDelId;
+            set => SetProperty(ref _currentDelId, value);
+        }
+
         #endregion
 
         #region Constructor
@@ -170,6 +191,7 @@ namespace IC_Loader_Pro
             IsUIEnabled = false;
             StatusMessage = "Please open or create an ArcGIS Pro project.";
         }
+        #endregion
 
         #region Private Helpers
 
@@ -178,11 +200,20 @@ namespace IC_Loader_Pro
         /// </summary>
         private Task RunOnUIThread(Action action)
         {
-            Log.RecordMessage("Attempting to schedule action on UI thread...", BisLogMessageType.Note);
-            return Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, QueuedTask.UIScheduler);
-        }
+            //Log.RecordMessage("Attempting to schedule action on UI thread...", BisLogMessageType.Note);
+            if (OnUIThread)
+            {
+                // We are, so we can run the action directly.
+                action();
+                // Return a completed task.
+                return Task.CompletedTask;
+            }
+            else
+            {
+                return Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, QueuedTask.UIScheduler);
 
-        #endregion
+            }
+        }        
 
         /// <summary>
         /// Determines if the application is currently on the UI thread.
@@ -197,8 +228,8 @@ namespace IC_Loader_Pro
                     return System.Windows.Application.Current.Dispatcher.CheckAccess();
             }
         }
-
         #endregion
+
 
     }
 }
