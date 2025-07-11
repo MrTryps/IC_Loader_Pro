@@ -276,13 +276,14 @@ namespace IC_Loader_Pro.Services
         /// </summary>
         /// <param name="mailItem">The source Outlook.MailItem.</param>
         /// <returns>A new, populated EmailItem object.</returns>
+        // In Services/OutlookService.cs
+
         private EmailItem MapToEmailItem(Outlook.MailItem mailItem)
         {
             if (mailItem == null) return null;
 
             var emailItem = new EmailItem
             {
-                // Use the PropertyAccessor to get the exact Message ID.
                 Emailid = mailItem.PropertyAccessor.GetProperty(PR_INTERNET_MESSAGE_ID) as string,
                 Subject = mailItem.Subject,
                 ReceivedTime = mailItem.ReceivedTime,
@@ -292,101 +293,135 @@ namespace IC_Loader_Pro.Services
                 Body = mailItem.Body
             };
 
-            // Process and save attachments
-            if (mailItem.Attachments.Count > 0)
-            {
-                // Create a temporary directory to store attachments for this email.
-                string tempAttachmentPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-                Directory.CreateDirectory(tempAttachmentPath);
+            // Call our new helper method to handle saving all attachments.
+            SaveAttachmentsToTempFolder(emailItem, mailItem.Attachments);
 
-                foreach (Outlook.Attachment attachment in mailItem.Attachments)
+            return emailItem;
+        }
+
+
+
+        /// <summary>
+        /// Finds an email by its ID in a source folder and moves it to a destination folder.
+        /// </summary>
+        /// <param name="messageId">The Internet Message ID of the email to move.</param>
+        /// <param name="sourceFolderPath">The path of the folder where the email currently resides.</param>
+        /// <param name="storeName">The name of the store (mailbox) for both source and destination.</param>
+        /// <param name="destinationFolderPath">The path of the folder to move the email to.</param>
+        /// <returns>True if the move was successful, otherwise false.</returns>
+        public bool MoveEmailToFolder(string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
+        {
+            Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{destinationFolderPath}'.", BisLogMessageType.Note);
+
+            Outlook.Application outlookApp = null;
+            Outlook.NameSpace mapiNamespace = null;
+            Outlook.MAPIFolder sourceFolder = null;
+            Outlook.MAPIFolder destinationFolder = null;
+            object itemToMove = null;
+            bool success = false;
+
+            if (string.IsNullOrEmpty(messageId) || string.IsNullOrEmpty(sourceFolderPath) || string.IsNullOrEmpty(destinationFolderPath))
+            {
+                Log.RecordError("MoveEmailToFolder failed: One or more required parameters were null or empty.", null, nameof(MoveEmailToFolder));
+                return false;
+            }
+
+            try
+            {
+                outlookApp = new Outlook.Application();
+                mapiNamespace = outlookApp.GetNamespace("MAPI");
+                string actualStoreName = string.IsNullOrEmpty(storeName) ? mapiNamespace.DefaultStore.DisplayName : storeName;
+
+                // Find both the source and destination folders
+                sourceFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, sourceFolderPath);
+                destinationFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, destinationFolderPath);
+
+                if (sourceFolder == null)
                 {
-                    string savedPath = Path.Combine(tempAttachmentPath, attachment.FileName);
+                    Log.RecordError($"Move failed: Could not find source folder '{sourceFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
+                    return false;
+                }
+
+                if (destinationFolder == null)
+                {
+                    Log.RecordError($"Move failed: Could not find destination folder '{destinationFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
+                    return false;
+                }
+
+                // Find the specific email item using the same DASL query logic
+                string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
+                itemToMove = sourceFolder.Items.Find(filter);
+
+                if (itemToMove is Outlook.MailItem mailItem)
+                {
+                    mailItem.Move(destinationFolder);
+                    success = true;
+                    Log.RecordMessage($"Successfully moved email '{messageId}'.", BisLogMessageType.Note);
+                }
+                else
+                {
+                    Log.RecordError($"Move failed: Could not find email with ID '{messageId}' in source folder.", null, nameof(MoveEmailToFolder));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"An exception occurred while trying to move email '{messageId}'.", ex, nameof(MoveEmailToFolder));
+                success = false;
+            }
+            finally
+            {
+                // Release all COM objects
+                if (itemToMove != null) Marshal.ReleaseComObject(itemToMove);
+                if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
+                if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
+                if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
+                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+            }
+
+            return success;
+        }
+
+
+        #region Private Helpers
+
+        private void SaveAttachmentsToTempFolder(EmailItem emailItem, Outlook.Attachments attachments)
+        {
+            if (attachments == null || attachments.Count == 0) return;
+
+            // Create a unique temporary folder for this email's attachments.
+            string tempFolderPath = Path.Combine(Path.GetTempPath(), "IC_Loader", Guid.NewGuid().ToString());
+            Directory.CreateDirectory(tempFolderPath);
+
+            // Store the path so we can access it later for processing and cleanup.
+            emailItem.TempFolderPath = tempFolderPath;
+
+            foreach (Outlook.Attachment attachment in attachments)
+            {
+                try
+                {
+                    // Note: We can add the sanitize logic from BisFileTools here if needed,
+                    // or just save with the original name for now.
+                    string savedPath = Path.Combine(tempFolderPath, attachment.FileName);
                     attachment.SaveAsFile(savedPath);
 
+                    // Add the saved attachment info to our custom EmailItem.
                     emailItem.Attachments.Add(new EmailItem.AttachmentItem
                     {
                         FileName = attachment.FileName,
                         SavedPath = savedPath
                     });
-
+                }
+                catch (Exception ex)
+                {
+                    Log.RecordError($"Failed to save attachment '{attachment.FileName}'.", ex, "SaveAttachmentsToTempFolder");
+                }
+                finally
+                {
                     // Release the individual attachment COM object.
                     Marshal.ReleaseComObject(attachment);
                 }
             }
-
-            return emailItem;
         }
-
-        //private Outlook.MailItem FindMailItemById(Outlook.Application app, string sanitizedId)
-        //{
-        //    const string methodName = "FindMailItemById";
-
-        //    // --- THE CORRECTED FILTER ---
-        //    // This syntax uses "ci_phrasematch" for an indexed search, which is more robust.
-        //    // It correctly wraps the schema name in double quotes and the ID in single quotes.
-        //    string filter = $"\"{_messageIdPropSchema}\" ci_phrasematch '{sanitizedId}'";
-
-        //    var searchCompleteEvent = new AutoResetEvent(false);
-        //    Outlook.Search advancedSearch = null;
-        //    Outlook.MailItem result = null;
-
-        //    void SearchCompleteHandler(Outlook.Search Search)
-        //    {
-        //        advancedSearch = Search;
-        //        searchCompleteEvent.Set();
-        //    }
-        //    ;
-
-        //    app.AdvancedSearchComplete += SearchCompleteHandler;
-
-        //    try
-        //    {
-        //        // Execute the search across all folders
-        //        app.AdvancedSearch("SCOPE_ALL_STORES", filter, false, "GetByIdSearchTag");
-
-        //        if (!searchCompleteEvent.WaitOne(15000)) // 15-second timeout
-        //        {
-        //            Log.RecordError("Outlook advanced search timed out.", null, methodName);
-        //            return null;
-        //        }
-
-        //        if (advancedSearch?.Results?.Count > 0)
-        //        {
-        //            // We must iterate through results to be safe
-        //            foreach (var item in advancedSearch.Results)
-        //            {
-        //                if (item is Outlook.MailItem mailItem)
-        //                {
-        //                    // Double-check the ID to be certain it's the right one
-        //                    string currentId = mailItem.PropertyAccessor.GetProperty(_messageIdPropSchema)?.ToString()?.Trim('<', '>');
-        //                    if (currentId != null && currentId.Equals(sanitizedId, StringComparison.OrdinalIgnoreCase))
-        //                    {
-        //                        result = mailItem;
-        //                        break; // Exit the loop once found
-        //                    }
-        //                    else
-        //                    {
-        //                        Marshal.ReleaseComObject(mailItem); // Release if not a match
-        //                    }
-        //                }
-        //            }
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        Log.RecordError($"AdvancedSearch failed with filter: {filter}", ex, methodName);
-        //        throw;
-        //    }
-        //    finally
-        //    {
-        //        app.AdvancedSearchComplete -= SearchCompleteHandler;
-        //        if (advancedSearch != null) Marshal.ReleaseComObject(advancedSearch);
-        //        searchCompleteEvent.Close();
-        //    }
-
-        //    return result;
-        //}
 
         private string GetSenderAddress(Outlook.MailItem mailItem)
         {
@@ -423,6 +458,7 @@ namespace IC_Loader_Pro.Services
             }
             return tempFolderPath;
         }
-#endregion
+        #endregion
+        #endregion
     }
 }

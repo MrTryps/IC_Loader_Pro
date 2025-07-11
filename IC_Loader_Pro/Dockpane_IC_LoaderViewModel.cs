@@ -56,6 +56,20 @@ namespace IC_Loader_Pro
             set => SetProperty(ref _currentPrefId, value);
         }
 
+        private string _currentAltId;
+        public string CurrentAltId
+        {
+            get => _currentAltId;
+            set => SetProperty(ref _currentAltId, value);
+        }
+
+        private string _currentActivityNum;
+        public string CurrentActivityNum
+        {
+            get => _currentActivityNum;
+            set => SetProperty(ref _currentActivityNum, value);
+        }
+
         private string _currentDelId;
         public string CurrentDelId
         {

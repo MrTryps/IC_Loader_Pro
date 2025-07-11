@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime;
 using System.Threading.Tasks;
+using System.Windows.Media;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 
@@ -33,10 +34,87 @@ namespace IC_Loader_Pro.Services
 
         /// <summary>
         /// The main entry point for processing a single email.
+        /// This version receives pre-fetched and pre-classified email objects.
+        /// </summary>
+        /// <param name="emailToProcess">The complete EmailItem object, including body and attachments.</param>
+        /// <param name="classification">The result of the initial classification.</param>
+        /// /// <param name="sourceFolderPath">The Outlook folder path where the email currently resides.</param>
+        /// <param name="sourceStoreName">The name of the Outlook store (mailbox) where the email resides.</param>
+        /// <returns>The master test result for the entire operation.</returns>
+        public async Task<IcTestResult> ProcessEmailAsync(EmailItem emailToProcess, EmailClassificationResult classification, string selectedIcType, string sourceFolderPath, string sourceStoreName)
+        {
+            _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
+            var icSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
+            var outlookService = new OutlookService();
+            // 1. Create the root test result for the entire operation.
+            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), emailToProcess.Emailid, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+
+            // 2. Handle simple cases first (Spam, Auto-Reply, etc.) based on the pre-run classification.
+            switch (classification.Type)
+            {
+                case EmailType.EmptySubjectline:
+                    var SubjectlineTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_EmptySubjectline"), emailToProcess.Emailid, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+                    SubjectlineTestResult.Passed = false;
+                    SubjectlineTestResult.Comments.Add($"Subject line is empty. Assumed to be of type '{selectedIcType}'.");
+                    rootTestResult.AddSubordinateTestResult(SubjectlineTestResult);
+                    break;
+                case EmailType.Spam:
+                    _log.RecordMessage("Email classified as SPAM. Moving to Junk folder.", BisLogMessageType.Note);
+                    outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, icSetting.EmailFolderSet.SpamFolderName);
+                    rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
+                    rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
+                    rootTestResult.Passed = false;
+                    
+                    break;
+
+                case EmailType.AutoResponse:
+                    _log.RecordMessage("Email classified as an Auto-Response. Moving to Correspondence.", BisLogMessageType.Note);
+                    rootTestResult.Comments.Add("Email identified as an auto-response and was moved.");
+                    rootTestResult.Passed = false;
+                    return rootTestResult;
+
+                // Add cases for other simple, non-processing types like BlockedEmail...
+
+                case EmailType.CEA:
+
+                case EmailType.DNA:
+                case EmailType.WRS:
+                    // Email is one of the types we process. Continue to the next steps.
+                    rootTestResult.Comments.Add($"Email type determined to be: {classification.Type}");
+                    break;
+
+                default:
+                    _log.RecordMessage($"Email type is '{classification.Type}' and is not configured for processing by this tool.", BisLogMessageType.Warning);
+                    rootTestResult.Comments.Add($"Email identified as unhandled type: {classification.Type}.");
+                    rootTestResult.Passed = false;
+                    return rootTestResult;
+            }
+
+            // --- FUTURE LOGIC WILL GO HERE ---
+            // 3. Process attachments (This is our next task).
+            // 4. Create the Deliverable Record in the database (This will generate the Del ID).
+            // 5. Run tests on each GIS file set.
+            // 6. Aggregate results into the rootTestResult.
+
+            // For now, we simulate a completed task.
+            await Task.CompletedTask;
+
+            return rootTestResult;
+        }
+
+
+
+
+
+
+
+
+        /// <summary>
+        /// The main entry point for processing a single email.
         /// Replicates the logic of the legacy processEmail function.
         /// </summary>
         /// <param name="emailId">The unique identifier of the email to process.</param>
-        public async Task<IcTestResult> ProcessEmailAsync(string emailId, string folderPath, string storeName)
+        public async Task<IcTestResult> ProcessEmailAsync2(string emailId, string folderPath, string storeName)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailId}", BisLogMessageType.Note);
 

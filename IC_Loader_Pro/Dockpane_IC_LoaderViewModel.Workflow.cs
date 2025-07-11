@@ -157,9 +157,13 @@ namespace IC_Loader_Pro
         /// Kicks off the processing for the currently selected IC queue.
         /// </summary>
         private async Task ProcessSelectedQueueAsync()
-        {                      
+        {
+            // --- 1. Clear Previous Email Info & Handle Edge Cases ---
+
             CurrentEmailSubject = "Loading...";
             CurrentPrefId = "";
+            CurrentAltId = "";      
+            CurrentActivityNum = ""; 
             CurrentDelId = "";
 
             if (SelectedIcType == null)
@@ -169,43 +173,63 @@ namespace IC_Loader_Pro
                 return;
             }
 
-
-            // Find the list of emails for the selected queue
             if (!_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
             {
                 StatusMessage = $"Queue '{SelectedIcType.Name}' is empty.";
+                CurrentEmailSubject = "No email selected";
                 return;
             }
 
-            // Get the first email from the list
+            // --- 2. Get Email and Path Info ---
             var firstEmail = emailsToProcess.First();
             var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-            //StatusMessage = $"Loading email: {firstEmail.Subject}...";
-            CurrentEmailSubject = firstEmail.Subject;
             string fullOutlookPath = icSetting.OutlookInboxFolderPath;
             var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
+            string selectedIcTypeName = SelectedIcType.Name;
 
             try
             {
-                // Instantiate the services needed for processing
-                var namedTests = new IcNamedTests(Log, PostGreTool);
-                var classifier = new EmailClassifierService(IcRules, Log);
-                var attachmentService = new AttachmentService(IcRules, namedTests,FileTool, Log);
+                // --- 3. Fetch the FULL Email Object Once ---
+                // We create a temporary service instance here to fetch the email.
+                var outlookService = new OutlookService();
+                EmailItem emailToProcess = await QueuedTask.Run(() =>
+                    outlookService.GetEmailById(folderPath, firstEmail.Emailid, storeName)
+                );
+                if (emailToProcess == null)
+                {
+                    StatusMessage = "Error: Could not retrieve the selected email from Outlook.";
+                    CurrentEmailSubject = "Error loading email.";
+                    return;
+                }
 
-                // This is the main orchestrator for processing a single email
+
+                // --- 4. Perform Initial Classification and UPDATE THE UI ---
+                var classifier = new EmailClassifierService(IcRules, Log);
+                var classification = classifier.ClassifyEmail(emailToProcess);
+
+                CurrentEmailSubject = emailToProcess.Subject;
+                CurrentPrefId = classification.PrefIds.FirstOrDefault() ?? "N/A";
+                CurrentAltId = classification.AltIds.FirstOrDefault() ?? "N/A";
+                CurrentActivityNum = classification.ActivityNums.FirstOrDefault() ?? "N/A";
+                CurrentDelId = "Pending"; // Del ID comes after processing
+                StatusMessage = "Processing...";
+
+                // --- 5. Pass the Fetched Objects to the Background Processor ---
+                var namedTests = new IcNamedTests(Log, PostGreTool);
                 var processingService = new EmailProcessingService(IcRules, namedTests,Log);
 
-                // Process the single email
-                IcTestResult finalResult = await processingService.ProcessEmailAsync(firstEmail.Emailid, folderPath, storeName);
+                // This call now uses the objects we already have.
+                IcTestResult finalResult = await processingService.ProcessEmailAsync(emailToProcess, classification, selectedIcTypeName, folderPath, storeName);
 
-                // Update the UI with the results of the processing
+                // --- 6. Update UI with Final Results ---
                 if (finalResult.Passed)
                 {
                     StatusMessage = "Email processed successfully.";
+                    // In the future, you would get the real Del ID here:
+                    // CurrentDelId = finalResult.DeliverableId;
                 }
                 else
                 {
-                    // Join all comments from the test result hierarchy for a detailed status
                     var allComments = finalResult.Comments.Concat(finalResult.SubTestResults.SelectMany(sr => sr.Comments));
                     StatusMessage = $"Processing failed: {string.Join(" ", allComments)}";
                 }
@@ -215,6 +239,30 @@ namespace IC_Loader_Pro
                 StatusMessage = "An error occurred while processing the email.";
                 Log.RecordError($"Error during ProcessSelectedQueueAsync for email ID {firstEmail.Emailid}", ex, "ProcessSelectedQueueAsync");
             }
+
+            //var attachmentService = new AttachmentService(IcRules, namedTests,FileTool, Log);
+
+
+            //    // Process the single email
+            //    IcTestResult finalResult = await processingService.ProcessEmailAsync(firstEmail.Emailid, folderPath, storeName);
+
+            //    // Update the UI with the results of the processing
+            //    if (finalResult.Passed)
+            //    {
+            //        StatusMessage = "Email processed successfully.";
+            //    }
+            //    else
+            //    {
+            //        // Join all comments from the test result hierarchy for a detailed status
+            //        var allComments = finalResult.Comments.Concat(finalResult.SubTestResults.SelectMany(sr => sr.Comments));
+            //        StatusMessage = $"Processing failed: {string.Join(" ", allComments)}";
+            //    }
+            //}
+            //catch (Exception ex)
+            //{
+            //    StatusMessage = "An error occurred while processing the email.";
+            //    Log.RecordError($"Error during ProcessSelectedQueueAsync for email ID {firstEmail.Emailid}", ex, "ProcessSelectedQueueAsync");
+            //}
         }
 
 

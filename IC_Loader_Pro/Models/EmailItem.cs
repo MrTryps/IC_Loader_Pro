@@ -82,5 +82,10 @@ namespace IC_Loader_Pro.Models
             /// </summary>
             public string SavedPath { get; set; }
         }
+
+        /// <summary>
+        /// The full path to the temporary directory where attachments for this email are stored.
+        /// </summary>
+        public string TempFolderPath { get; set; }
     }
 }

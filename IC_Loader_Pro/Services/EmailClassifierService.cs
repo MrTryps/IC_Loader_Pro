@@ -1,6 +1,7 @@
 ﻿using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System;
+using System.Linq;
 
 namespace IC_Loader_Pro.Services
 {
@@ -19,9 +20,8 @@ namespace IC_Loader_Pro.Services
         {
             const string methodName = "ClassifyEmail";
             var result = new EmailClassificationResult();
+            var regexTool = Module1.RegexTool;
 
-            // It's good practice to get a reference to the regex tool once.
-            var regexTool = _rulesEngine.RegexTool;
             if (regexTool == null)
             {
                 _log.RecordError("The RegexTool within IC_Rules is not initialized.", null, methodName);
@@ -30,13 +30,42 @@ namespace IC_Loader_Pro.Services
 
             try
             {
+                // --- Start of New ID Extraction Logic ---
+
+                // 1. Clean and split the subject line into unique words
+                string cleanedSubject = email.Subject ?? string.Empty;
+                // NOTE: The VB code calls a 'cleanSubjectLine' method which is not provided.
+                // We will replicate the splitting logic. You may need to add more cleaning steps later.
+                var delimiters = new[] { ',', ';', '/', '&', '(', ')', '_', '-' };
+                var subjectWords = cleanedSubject.Split(delimiters, StringSplitOptions.RemoveEmptyEntries)
+                                                 .Select(w => w.Trim().ToUpper())
+                                                 .Where(w => !string.IsNullOrEmpty(w))
+                                                 .Distinct()
+                                                 .ToList();
+
+                // 2. Iterate through each word and check it against the regex rules
+                foreach (var word in subjectWords)
+                {
+                    // Check for Preference IDs
+                    result.PrefIds.AddRange(regexTool.ReturnMatchesOfNamedRegex("WordIsPrefId", word));
+
+                    // Check for SRP IDs (AltIds)
+                    result.AltIds.AddRange(regexTool.ReturnMatchesOfNamedRegex("WordIsSrpId", word));
+
+                    // Check for Activity Numbers
+                    result.ActivityNums.AddRange(regexTool.ReturnMatchesOfNamedRegex("WordIsActivityNum", word));
+                }
+
+                // --- End of New ID Extraction Logic ---
+
+
+                // Now, perform the rest of the classification (spam, auto-reply, etc.)
                 if (string.IsNullOrWhiteSpace(email.Subject))
                 {
                     result.Type = EmailType.EmptySubjectline;
                     return result;
                 }
 
-                // Correctly call the method on the regexTool instance.
                 if (regexTool.StringMatchesNamedRegex("SubjectLineIsSpam", email.Subject) ||
                     regexTool.StringMatchesNamedRegex("SenderIsSpam", email.SenderEmailAddress))
                 {
@@ -50,17 +79,35 @@ namespace IC_Loader_Pro.Services
                     return result;
                 }
 
-                // ... (other classification rules using regexTool) ...
                 if (regexTool.StringMatchesNamedRegex("SubjectLineIsCEA", email.Subject))
                 {
                     result.Type = EmailType.CEA;
                 }
-                // ... etc. ...
+                
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsCKE", email.Subject))
+                {
+                    result.Type = EmailType.CKE;
+                }
+
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsDN", email.Subject))
+                {
+                    result.Type = EmailType.DNA;
+                }
+
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsIEC", email.Subject))
+                {
+                    result.Type = EmailType.IEC;
+                }
+
+                if (regexTool.StringMatchesNamedRegex("SubjectLineIsWRS", email.Subject))
+                {
+                    result.Type = EmailType.WRS;
+                }
             }
             catch (Exception ex)
             {
                 _log.RecordError($"An unexpected error occurred during email classification for subject: '{email.Subject}'", ex, methodName);
-                throw;
+                // We return the partial result instead of throwing, so the app can handle it gracefully.
             }
 
             return result;
