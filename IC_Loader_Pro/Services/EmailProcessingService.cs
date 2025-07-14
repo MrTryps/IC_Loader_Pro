@@ -134,8 +134,6 @@ namespace IC_Loader_Pro.Services
                 return rootTestResult;
             }
 
-
-
             // 3. If we get here, the email is the correct type. Proceed with full processing.
             rootTestResult.Comments.Add($"Email type confirmed as: {finalType}. Proceeding with attachment analysis.");
 
@@ -151,8 +149,19 @@ namespace IC_Loader_Pro.Services
                 return rootTestResult;
             }
 
+            if (attachmentAnalysis.IdentifiedFileSets.Count == 0)
+            {
+                _log.RecordMessage("No valid GIS datasets found in attachments.", BisLogMessageType.Warning);
+                rootTestResult.Passed = false;
+                rootTestResult.Comments.Add("No valid GIS datasets found in attachments.");
+                outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.EmailFolderSet.CorrespondenceFolderName);
+                return rootTestResult;
+            }
+
+
+
             // --- FUTURE LOGIC ---
-            // Create Deliverable Record, run tests on filesets, move to "Processed", etc.
+            // Create Deliverable Record, move to "Processed", etc.
 
             await Task.CompletedTask;
             return rootTestResult;

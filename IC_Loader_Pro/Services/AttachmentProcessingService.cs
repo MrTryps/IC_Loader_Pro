@@ -3,6 +3,7 @@ using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using static BIS_Log;
 
 namespace IC_Loader_Pro.Services
@@ -75,6 +76,81 @@ namespace IC_Loader_Pro.Services
             return tempFolderPath;
         }
 
+        public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType)
+        {
+            const string methodName = "AnalyzeAttachments";
+
+            var analysisResult = new AttachmentAnalysisResult
+            {
+                TestResult = _namedTests.returnNewTestResult("GIS_Attachments_Tests_Passed", "", IcTestResult.TestType.Deliverable),
+                TempFolderPath = folderToSearch
+            };
+
+            if (string.IsNullOrEmpty(folderToSearch))
+            {
+                analysisResult.TestResult.Passed = false;
+                analysisResult.TestResult.AddComment("Attachment analysis failed: The temporary folder path was not provided.");
+                return analysisResult;
+            }
+
+            try
+            {
+                // Step 1: Unzip any archive files.
+                var unzipService = new UnzipService(_log);
+                var unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip_Passed", "", IcTestResult.TestType.Deliverable);
+
+                // This call finds all .zip files and extracts them.
+                var unzippedFilesInfo = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
+
+                if (unzippedFilesInfo.Any())
+                {
+                    unzipTestResult.Comments.Add($"Successfully extracted {unzippedFilesInfo.Count} zip file(s).");
+                }
+                else
+                {
+                    unzipTestResult.Comments.Add("No .zip files were found in the attachments.");
+                }
+                analysisResult.TestResult.AddSubordinateTestResult(unzipTestResult);
+
+
+                // Step 2: Identify logical GIS filesets from the entire folder content.
+                analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
+
+
+                // Step 3: Create a comprehensive list of all individual files.
+                var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch); // true = recursive
+
+                foreach (string filePath in allFilesFound)
+                {
+                    // Find which zip file this file came from, if any.
+                    var parentZipInfo = unzippedFilesInfo
+                        .FirstOrDefault(zipInfo => filePath.StartsWith(zipInfo.ExtractionPath, StringComparison.OrdinalIgnoreCase));
+
+                    analysisResult.AllFiles.Add(new AnalyzedFile
+                    {
+                        FileName = Path.GetFileName(filePath),
+                        CurrentPath = Path.GetDirectoryName(filePath),
+                        // If the file was in a zip, record the zip's name as its original path.
+                        OriginalPath = parentZipInfo.OriginalZipFileName ?? string.Empty
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.RecordError("An error occurred during attachment analysis.", ex, methodName);
+                analysisResult.TestResult.Passed = false;
+                analysisResult.TestResult.Comments.Add($"Fatal error during attachment analysis: {ex.Message}");
+            }
+
+            return analysisResult;
+        }
+
+
+
+
+
+
+
         /// <summary>
         /// Analyzes a folder of attachments to identify GIS datasets.
         /// Replicates the logic of the legacy returnGisFilesFromFolder function.
@@ -82,7 +158,7 @@ namespace IC_Loader_Pro.Services
         /// <param name="folderToSearch">The directory containing the saved attachments.</param>
         /// <param name="icType">The IC Type being processed, used to determine fileset rules.</param>
         /// <returns>An object containing the results of the analysis.</returns>
-        public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType)
+        public AttachmentAnalysisResult AnalyzeAttachments_old(string folderToSearch, string icType)
         {
             const string methodName = "AnalyzeAttachments";
 
