@@ -44,12 +44,22 @@ namespace IC_Loader_Pro.Services
         public async Task<IcTestResult> ProcessEmailAsync(EmailItem emailToProcess, EmailClassificationResult classification, string selectedIcType, string sourceFolderPath, string sourceStoreName)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
-            var icSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
-            var outlookService = new OutlookService();
+
             // 1. Create the root test result for the entire operation.
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), emailToProcess.Emailid, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
 
+
+            // Get the settings for the current IC Type being processed
+            var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
+            if (currentIcSetting == null)
+            {
+                rootTestResult.Passed = false;
+                rootTestResult.Comments.Add($"Fatal error: Rules for queue '{selectedIcType}' not found.");
+                return rootTestResult;
+            }
+            var outlookService = new OutlookService();
             // 2. Handle simple cases first (Spam, Auto-Reply, etc.) based on the pre-run classification.
+            bool moveSucceeded = false;
             switch (classification.Type)
             {
                 case EmailType.EmptySubjectline:
@@ -59,17 +69,30 @@ namespace IC_Loader_Pro.Services
                     rootTestResult.AddSubordinateTestResult(SubjectlineTestResult);
                     break;
                 case EmailType.Spam:
-                    _log.RecordMessage("Email classified as SPAM. Moving to Junk folder.", BisLogMessageType.Note);
-                    outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, icSetting.EmailFolderSet.SpamFolderName);
-                    rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
-                    rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
+                    _log.RecordMessage("Email classified as SPAM. Moving to Junk folder. Attempting to move.", BisLogMessageType.Note);
+                     moveSucceeded = outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.EmailFolderSet.SpamFolderName);
+                    if (moveSucceeded)
+                    {
+                        rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
+                    }
+                    else
+                    {
+                        rootTestResult.Comments.Add($"Email identified as SPAM, but the attempt to move it failed. Check logs for details.");
+                    }
                     rootTestResult.Passed = false;
-                    
-                    break;
+                    return rootTestResult;                  
 
                 case EmailType.AutoResponse:
-                    _log.RecordMessage("Email classified as an Auto-Response. Moving to Correspondence.", BisLogMessageType.Note);
-                    rootTestResult.Comments.Add("Email identified as an auto-response and was moved.");
+                    _log.RecordMessage("Email classified as AutoResponse. Attempting to move.", BisLogMessageType.Note);
+                     moveSucceeded = outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.EmailFolderSet.CorrespondenceFolderName);
+                    if (moveSucceeded)
+                    {
+                        rootTestResult.Comments.Add("\"Email classified as an Auto-Response. Moving to Correspondence.");
+                    }
+                    else
+                    {
+                        rootTestResult.Comments.Add($"Email identified as Auto-Response, but the attempt to move it failed. Check logs for details.");
+                    }
                     rootTestResult.Passed = false;
                     return rootTestResult;
 
@@ -90,8 +113,21 @@ namespace IC_Loader_Pro.Services
                     return rootTestResult;
             }
 
+            // 3. If the email is a type we process, analyze its attachments.
+            var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
+            var attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
+            // If the attachment analysis failed (e.g., no valid files found), we can stop.
+            if (!attachmentAnalysis.TestResult.Passed)
+            {
+                _log.RecordMessage("Processing stopped due to attachment analysis failure.", BisLogMessageType.Warning);
+                rootTestResult.Passed = false;
+                rootTestResult.Comments.Add("Attachment processing failed.");
+                return rootTestResult;
+            }
+
             // --- FUTURE LOGIC WILL GO HERE ---
-            // 3. Process attachments (This is our next task).
+            // Add the attachment test results as a subordinate to the root result.
+            rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
             // 4. Create the Deliverable Record in the database (This will generate the Del ID).
             // 5. Run tests on each GIS file set.
             // 6. Aggregate results into the rootTestResult.
