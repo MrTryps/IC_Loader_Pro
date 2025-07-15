@@ -19,6 +19,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1; // For  Log
+using IC_Loader_Pro.ViewModels;
 
 namespace IC_Loader_Pro
 {
@@ -35,6 +36,11 @@ namespace IC_Loader_Pro
         private readonly ObservableCollection<ICQueueSummary> _ListOfIcEmailTypeSummaries = new ObservableCollection<ICQueueSummary>();
         // This is a read-only wrapper around the real list that we will expose to the UI
         private readonly ReadOnlyObservableCollection<ICQueueSummary> _readOnlyListOfQueues;
+
+        // This collection will hold the filesets for the currently active email
+        private readonly ObservableCollection<FileSetViewModel> _foundFileSets = new ObservableCollection<FileSetViewModel>();
+        public ReadOnlyObservableCollection<FileSetViewModel> _readOnlyFoundFileSets { get; }
+
 
         private ICQueueSummary _selectedQueue;
         private bool _isInitialized = false;
@@ -85,6 +91,7 @@ namespace IC_Loader_Pro
            
             // Create the public, read-only collection that the UI will bind to
             _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
+            _readOnlyFoundFileSets = new ReadOnlyObservableCollection<FileSetViewModel>(_foundFileSets);
 
             // This is a key step from the sample. It allows a background thread to safely update a collection that the UI is bound to.
             BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
@@ -107,6 +114,10 @@ namespace IC_Loader_Pro
         /// The list of IC Queues exposed to the View.
         /// </summary>
         public ReadOnlyObservableCollection<ICQueueSummary> PublicListOfIcEmailTypeSummaries => _readOnlyListOfQueues;
+
+        /// The list of identified filesets from the current email.
+        /// </summary>
+        public ReadOnlyObservableCollection<FileSetViewModel> FoundFileSets => _readOnlyFoundFileSets;
 
         /// <summary>
         /// The currently selected IC Queue from the UI.

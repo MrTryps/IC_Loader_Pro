@@ -166,7 +166,7 @@ namespace IC_Loader_Pro
                 return;
             }
 
-            EmailType? userSelectedType = null;
+            EmailType? userSelectedType = null;            
 
             var unprocessedEmails = new List<UnprocessedEmailInfo>();
 
@@ -177,6 +177,7 @@ namespace IC_Loader_Pro
                 // Get the top email from the list for this iteration.
                 var currentEmailSummary = emailsToProcess.First();
                 EmailItem emailToProcess = null; // To hold the full email object for cleanup
+                _foundFileSets.Clear();
 
                 try
                 {
@@ -220,18 +221,30 @@ namespace IC_Loader_Pro
 
                     var namedTests = new IcNamedTests(Log, PostGreTool);
                     var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                    IcTestResult finalResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
-                    if (!finalResult.Passed)
+                    EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
+                    if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
+                    {
+                        await RunOnUIThread(() =>
+                        {
+                            _foundFileSets.Clear(); // Clear again just in case
+                            foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                            {
+                                // This is the line you asked about
+                                _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
+                            }
+                        });
+                    }
+                    if (!processingResult.TestResult.Passed)
                     {
                         unprocessedEmails.Add(new UnprocessedEmailInfo
                         {
                             Subject = emailToProcess.Subject,
                             // Use the last comment as the reason, which will be accurate.
-                            Reason = finalResult.Comments.LastOrDefault() ?? "An unknown error occurred."
+                            Reason = processingResult.TestResult.Comments.LastOrDefault() ?? "An unknown error occurred."
                         });
                     }
                     // --- 4. Update Final Status and Stats ---
-                    UpdateQueueStats(finalResult);
+                    UpdateQueueStats(processingResult.TestResult);
                 }
                 catch (Exception ex)
                 {
