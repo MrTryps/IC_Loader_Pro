@@ -9,6 +9,8 @@ using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Mapping.Events;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models; // Your ICQueueSummary class
+using IC_Loader_Pro.ViewModels;
+using IC_Rules_2025;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -19,7 +21,6 @@ using System.Windows.Data;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1; // For  Log
-using IC_Loader_Pro.ViewModels;
 
 namespace IC_Loader_Pro
 {
@@ -47,6 +48,15 @@ namespace IC_Loader_Pro
         private readonly object _lock = new object();
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
+        private string _currentEmailId;
+        public string CurrentEmailId
+        {
+            get => _currentEmailId;
+            set => SetProperty(ref _currentEmailId, value);
+        }
+
+        private IcTestResult _currentEmailTestResult;
 
         private string _currentEmailSubject = "No email selected";
         public string CurrentEmailSubject
@@ -98,13 +108,14 @@ namespace IC_Loader_Pro
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => IsUIEnabled);
-            SaveCommand = new RelayCommand(async () => await OnSave(), () => IsUIEnabled);
-            SkipCommand = new RelayCommand(async () => await OnSkip(), () => IsUIEnabled);
-            RejectCommand = new RelayCommand(async () => await OnReject(), () => IsUIEnabled);
+            SaveCommand = new RelayCommand(async () => await OnSave(), () => IsEmailActionEnabled);
+            SkipCommand = new RelayCommand(async () => await OnSkip(), () => IsEmailActionEnabled);
+            RejectCommand = new RelayCommand(async () => await OnReject(), () => IsEmailActionEnabled);
             ShowNotesCommand = new RelayCommand(async () => await OnShowNotes(), () => IsUIEnabled);
             SearchCommand = new RelayCommand(async () => await OnSearch(), () => IsUIEnabled);
             ToolsCommand = new RelayCommand(async () => await OnTools(), () => IsUIEnabled);
             OptionsCommand = new RelayCommand(async () => await OnOptions(), () => IsUIEnabled);
+            ShowResultsCommand = new RelayCommand(OnShowResults, () => _currentEmailTestResult != null);
         }
         #endregion
      
@@ -146,9 +157,18 @@ namespace IC_Loader_Pro
             }
         }
 
-         #endregion
+        #endregion
 
-      
+        private bool _isEmailActionEnabled = false;
+        /// <summary>
+        /// Controls whether the Save, Skip, and Reject buttons are enabled.
+        /// </summary>
+        public bool IsEmailActionEnabled
+        {
+            get => _isEmailActionEnabled;
+            set => SetProperty(ref _isEmailActionEnabled, value);
+        }
+
 
         #region Overrides and Static Show Method
 

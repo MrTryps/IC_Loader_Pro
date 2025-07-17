@@ -86,11 +86,16 @@ namespace IC_Loader_Pro.Services
                 TempFolderPath = folderToSearch
             };
 
+            // --- THIS IS THE NEW LOGIC ---
+            // First, check if there was even a folder created.
+            // The TempFolderPath will only be set if attachments existed to be saved.
             if (string.IsNullOrEmpty(folderToSearch))
             {
+                // This is not a code error, but a validation failure. The submission is invalid.
                 analysisResult.TestResult.Passed = false;
-                analysisResult.TestResult.AddComment("Attachment analysis failed: The temporary folder path was not provided.");
-                return analysisResult;
+                analysisResult.TestResult.AddComment("Email contains no attachments.");
+                _log.RecordMessage("Attachment analysis determined the email has no attachments.", BisLogMessageType.Note);
+                return analysisResult; // Exit immediately
             }
 
             try

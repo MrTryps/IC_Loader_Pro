@@ -1,14 +1,17 @@
-﻿using ArcGIS.Desktop.Framework.Contracts;
+﻿using ArcGIS.Desktop.Framework;
+using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Services;
+using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
-using BIS_Tools_DataModels_2025;
-using static IC_Loader_Pro.Module1;
 using static BIS_Log;
+using static IC_Loader_Pro.Module1;
 
 
 namespace IC_Loader_Pro
@@ -24,6 +27,7 @@ namespace IC_Loader_Pro
         public ICommand ToolsCommand { get; private set; }
         public ICommand OptionsCommand { get; private set; }
         public ICommand RefreshQueuesCommand { get; private set; }
+        public ICommand ShowResultsCommand { get; private set; }
         #endregion
 
         #region Command Methods
@@ -31,27 +35,144 @@ namespace IC_Loader_Pro
         {
             Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
 
-            // We can now use 'await' here for any async GIS work in the future,
-            // for example, saving features to the 'manually_added' layer.
-            await QueuedTask.Run(() => {
-                // ... future GIS logic ...
-            });
+            // 1. Ensure there is a test result to save.
+            if (_currentEmailTestResult == null)
+            {
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("There is no processed email result to save.", "Save Error");
+                return;
+            }
+
+            // 2. Update stats and status message.
+            IsEmailActionEnabled = false; // Disable buttons during save
+            StatusMessage = "Finalizing and saving to database...";
+            SelectedIcType.PassedCount++;
+
+            try
+            {
+                // 3. Call the finalization service.
+                var processingService = new EmailProcessingService(IcRules, new IcNamedTests(Log, PostGreTool), Log);
+                // We need the attachment analysis result, which is currently local to ProcessSelectedQueueAsync.
+                // For now, we'll pass null. In a future refactor, we would store this on the ViewModel as well.
+                string newDelId = await processingService.FinalizeAndSaveAsync(_currentEmailTestResult, null);
+
+                // Update the UI with the new Deliverable ID.
+                CurrentDelId = newDelId;
+                StatusMessage = "Successfully saved submission.";
+
+                // 4. Move the processed email.
+                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
+                var outlookService = new OutlookService();
+                string fullOutlookPath = icSetting.OutlookInboxFolderPath;
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
+
+                outlookService.MoveEmailToFolder(
+                    CurrentEmailId,
+                    folderPath,
+                    storeName,
+                    icSetting.EmailFolderSet.ProccessedFolderName
+                );
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("An error occurred during the save process.", ex, nameof(OnSave));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    "An error occurred while saving the submission. Please check the logs.",
+                    "Save Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+
+            // 5. Advance to the next email.
+            await ProcessNextEmail();
         }
 
         // Also update OnSkip and OnReject
         private async Task OnSkip()
         {
-            Log.RecordMessage("Skip button was clicked.",BisLogMessageType.Note);
-            // Use Task.CompletedTask as a placeholder since there's no async work yet.
-            await Task.CompletedTask;
-        }
+            Log.RecordMessage("Skip button was clicked.", BisLogMessageType.Note);
 
+            if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
+            {
+                StatusMessage = "Nothing to skip.";
+                return;
+            }
+
+            // 1. Create a specific test result for the skip action using the new rule.
+            var namedTests = new IcNamedTests(Log, PostGreTool);
+            var skipTestResult = namedTests.returnNewTestResult(
+                "GIS_Skipped", 
+                CurrentEmailId,
+                IcTestResult.TestType.Deliverable
+            );
+            // The test itself didn't "fail", the user just skipped it.
+            skipTestResult.Passed = true;
+            skipTestResult.AddComment($"User manually skipped email: {CurrentEmailSubject}");
+
+            // (Optional) You could record this skip action to the database if needed.
+            // skipTestResult.RecordResults();
+
+            // 2. Update the queue statistics.
+            UpdateQueueStats(skipTestResult);
+
+            // 3. Advance to the next email.
+            await ProcessNextEmail();
+        }
         private async Task OnReject()
         {
             Log.RecordMessage("Reject button was clicked.", BisLogMessageType.Note);
-            await Task.CompletedTask;
-        }
 
+            if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
+            {
+                StatusMessage = "Nothing to reject.";
+                return;
+            }
+
+            // Disable the action buttons while processing
+            IsEmailActionEnabled = false;
+            StatusMessage = "Processing rejection...";
+
+            try
+            {
+                // 1. Create the final test result for the manual rejection.
+                var namedTests = new IcNamedTests(Log, PostGreTool);
+                var rejectionTestResult = namedTests.returnNewTestResult(
+                    "GIS_Root_Email_Load",
+                    CurrentEmailId,
+                    IcTestResult.TestType.Deliverable
+                );
+                rejectionTestResult.Passed = false;
+                rejectionTestResult.AddComment("Submission was manually rejected by the user.");
+
+                // 2. Update the UI stats immediately.
+                SelectedIcType.FailedCount++;
+
+                // 3. Call the shared rejection logic in the service.
+                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+
+                // Get the source folder info needed to move the email.
+                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
+                string fullOutlookPath = icSetting.OutlookInboxFolderPath;
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
+
+                // This call is now much cleaner and delegates the work.
+                // It needs to run on a background thread to avoid freezing the UI.
+                await QueuedTask.Run(() =>
+                    processingService.HandleRejection(rejectionTestResult, folderPath, storeName)
+                );
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("An error occurred during the rejection process.", ex, nameof(OnReject));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    "An error occurred during the rejection process. Please check the logs.",
+                    "Rejection Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+
+            // 4. Advance to the next email in the queue.
+            await ProcessNextEmail();
+        }
         private async Task OnShowNotes()
         {
             Log.RecordMessage("Menu: Notes was clicked.", BisLogMessageType.Note);
@@ -77,29 +198,30 @@ namespace IC_Loader_Pro
             await Task.CompletedTask;
         }
 
-        ///// <summary>
-        ///// This method will contain the logic to call your Outlook library and get the real data.
-        ///// </summary>
-        //private Task RefreshICQueuesAsync()
-        //{
-        //    return QueuedTask.Run(() =>
-        //    {
-        //        // This lock ensures that the collection is not modified by two threads at once.
-        //        lock (_lockQueueCollection)
-        //        {
-        //            _listOfQueues.Clear();
+        private void OnShowResults()
+        {
+        
+            ShowTestResultWindow(_currentEmailTestResult);
+        }
 
-        //            // For now, we use sample data. Later, we will replace this with a call
-        //            // to your BIS_IC_InputClasses_2025 library.
-        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "CEAs", EmailCount = 12, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "DNAs", EmailCount = 5, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-        //            _listOfQueues.Add(new Models.ICQueueSummary { Name = "WRAs", EmailCount = 21, PassedCount = 0, SkippedCount = 0, FailedCount = 0 });
-        //        }
+        private void ShowTestResultWindow(IcTestResult testResult)
+        {
+            if (testResult == null)
+            {
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("No test results are available to display.", "Show Results");
+                return;
+            }
 
-        //        // Select the first item by default
-        //        SelectedIcType = _readOnlyListOfQueues.FirstOrDefault();
-        //    });
-        //}
+            // This logic is moved from OnShowResults
+            var testResultViewModel = new ViewModels.TestResultViewModel(testResult);
+            var testResultWindow = new Views.TestResultWindow
+            {
+                DataContext = testResultViewModel,
+                Owner = FrameworkApplication.Current.MainWindow
+            };
+            testResultWindow.ShowDialog();
+        }
+
         #endregion
     }
 }

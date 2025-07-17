@@ -66,7 +66,7 @@ namespace IC_Loader_Pro.Services
             EmailType finalType = manuallySelectedType ?? classification.Type;
 
             // --- Corrected Subject Line Test ---
-            var subjectLineTest = _namedTests.returnNewTestResult("GIS_Subjectline_Tests_Passed", "-1", IcTestResult.TestType.Deliverable);
+            var subjectLineTest = _namedTests.returnNewTestResult("GIS_EmptySubjectline", "-1", IcTestResult.TestType.Deliverable);
             if (classification.Type == EmailType.EmptySubjectline)
             {
                 subjectLineTest.Passed = false; // An empty subject is a failed test
@@ -105,8 +105,13 @@ namespace IC_Loader_Pro.Services
 
             if (!attachmentAnalysis.TestResult.Passed)
             {
+                _log.RecordMessage("Processing stopped due to attachment analysis failure. Handling as a rejection.", BisLogMessageType.Warning);
                 rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("Attachment processing failed.");
+
+                // Call the same shared rejection handler
+                HandleRejection(rootTestResult, sourceFolderPath, sourceStoreName);
+
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
@@ -210,6 +215,75 @@ namespace IC_Loader_Pro.Services
             // 8. Aggregate results and save everything to the database.
 
             return rootTestResult;
+        }
+
+        // In Services/EmailProcessingService.cs
+
+        /// <summary>
+        /// (SHELL METHOD) Handles the final processing steps for a valid submission,
+        /// including creating the deliverable record and saving all test results.
+        /// </summary>
+        /// <param name="rootTestResult">The root test result containing all sub-tests.</param>
+        /// <param name="attachmentAnalysis">The results of the attachment analysis.</param>
+        /// <returns>The newly generated Deliverable ID from the database.</returns>
+        public async Task<string> FinalizeAndSaveAsync(IcTestResult rootTestResult, AttachmentAnalysisResult attachmentAnalysis)
+        {
+            _log.RecordMessage("Finalizing and saving submission...", BisLogMessageType.Note);
+
+            // --- FUTURE LOGIC ---
+            // 1. Create the Deliverable record in the database using the email info.
+            //    This database call would return the new Deliverable ID.
+            string newDeliverableId = "DEL-54321"; // Placeholder
+            _log.RecordMessage($"Generated new Deliverable ID: {newDeliverableId}", BisLogMessageType.Note);
+
+            // 2. Run final, detailed tests on the GIS filesets found in attachmentAnalysis.
+            //    These would be added as more subordinate tests to rootTestResult.
+
+            // 3. Save the entire test result hierarchy to the database.
+            //rootTestResult.RecordResults(newDeliverableId); // Pass the new ID to link the tests
+            _log.RecordMessage("Successfully (will be) saved all test results to the database.", BisLogMessageType.Note);
+
+            // Make the method async
+            await Task.CompletedTask;
+
+            return newDeliverableId;
+        }
+
+        // In Services/EmailProcessingService.cs
+
+        public void HandleRejection(IcTestResult testResult, string sourceFolderPath, string sourceStoreName)
+        {
+            _log.RecordMessage("Handling rejection...", BisLogMessageType.Note);
+
+            // --- NEW: Step 1: Create the Deliverable Record and get the new ID ---
+            // This is the same first step that a "Save" operation would perform.
+            // In the future, this will be a real database call.
+            string newDeliverableId = "DEL-" + new Random().Next(10000, 99999); // Placeholder for DB call
+            _log.RecordMessage($"Generated new Deliverable ID for rejected submission: {newDeliverableId}", BisLogMessageType.Note);
+            // --------------------------------------------------------------------
+
+            // 2. Record the final test result hierarchy to the database.
+            // We now pass the new Deliverable ID to link the tests to the record.
+            //testResult.RecordResults(newDeliverableId);
+            _log.RecordMessage("Rejection result (Will have) been recorded to the database.", BisLogMessageType.Note);
+
+            // 3. (SHELL) Generate the content for the rejection email.
+            var rejectionEmailBody = string.Join("\n", testResult.Comments);
+            _log.RecordMessage($"Generated rejection email body:\n{rejectionEmailBody}", BisLogMessageType.Note);
+            // In the future, you would use this to create and send an email.
+
+            // 4. Move the email to the 'Proccessed' folder.
+            // The RefId on the test result is the email's MessageId.
+            string emailMessageId = testResult.RefId;
+            var icSetting = _rules.ReturnIcGisTypeSettings(testResult.TestRule.Name);
+            var outlookService = new OutlookService();
+
+            outlookService.MoveEmailToFolder(
+                emailMessageId,
+                sourceFolderPath,
+                sourceStoreName,
+                icSetting.EmailFolderSet.ProccessedFolderName
+            );
         }
     }
 }

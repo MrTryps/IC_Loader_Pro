@@ -28,6 +28,12 @@ namespace IC_Loader_Pro.Services
         /// <returns>A list of EmailItem objects.</returns>
         public List<EmailItem> GetEmailsFromFolderPath(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
+            if (!IsOutlookResponsive())
+            {
+                // If Outlook is not responsive, return an empty list immediately to prevent a freeze.
+                throw new OutlookNotResponsiveException("Outlook is not running or is not responsive.");
+            }
+
             if (string.IsNullOrWhiteSpace(fullFolderPath) || !fullFolderPath.StartsWith("\\\\"))
             {
                 throw new ArgumentException("Invalid folder path format. Path must start with '\\\\'.", nameof(fullFolderPath));
@@ -379,10 +385,7 @@ namespace IC_Loader_Pro.Services
             }
 
             return success;
-        }
-
-
-        #region Private Helpers
+        }               
 
         private void SaveAttachmentsToTempFolder(EmailItem emailItem, Outlook.Attachments attachments)
         {
@@ -458,7 +461,50 @@ namespace IC_Loader_Pro.Services
             }
             return tempFolderPath;
         }
+
+
+        /// <summary>
+        /// Checks if the main Outlook window is responsive by sending it a message with a timeout.
+        /// </summary>
+        /// <returns>True if Outlook is running and responsive, otherwise false.</returns>
+        public bool IsOutlookResponsive()
+        {
+            // The class name for the main Outlook window is "rctrl_renwnd32"
+            IntPtr outlookHandle = Win32Helper.FindWindow("rctrl_renwnd32", null);
+
+            if (outlookHandle == IntPtr.Zero)
+            {
+                Log.RecordMessage("Outlook process not found.", BisLogMessageType.Warning);
+                return false; // Outlook is not running.
+            }
+
+            IntPtr result;
+            const uint timeoutMilliseconds = 2000; // 2-second timeout
+
+            // Send a null message to the Outlook window. If it's responsive, it will reply quickly.
+            // If it's hung, this call will time out.
+            IntPtr response = Win32Helper.SendMessageTimeout(
+                outlookHandle,
+                Win32Helper.WM_NULL,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                Win32Helper.SendMessageTimeoutFlags.SMTO_ABORTIFHUNG | Win32Helper.SendMessageTimeoutFlags.SMTO_NORMAL,
+                timeoutMilliseconds,
+                out result
+            );
+
+            // A non-zero response indicates success. A zero response indicates a timeout or error.
+            if (response != IntPtr.Zero)
+            {
+                return true; // Outlook is responsive.
+            }
+            else
+            {
+                Log.RecordError("Outlook appears to be running but is not responsive.", null, nameof(IsOutlookResponsive));
+                return false; // Outlook is hung.
+            }
+        }
         #endregion
-        #endregion
+
     }
 }

@@ -34,6 +34,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="150"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
@@ -116,8 +118,8 @@
             <GroupBox Grid.Column="0" Header="Shapes to Review" Margin="0,0,2,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="5">
-                        <CheckBox Content="Show Valid" IsChecked="{Binding ShowValid}" Margin="0,0,10,0"/>
-                        <CheckBox Content="Show Invalid" IsChecked="{Binding ShowInvalid}" Margin="0,0,10,0"/>
+                        <CheckBox Content="Show Valid" IsChecked="{Binding ShowValid, Mode=OneWay}" Margin="0,0,10,0"/>
+                        <CheckBox Content="Show Invalid" IsChecked="{Binding ShowInvalid, Mode=OneWay}" Margin="0,0,10,0"/>
                     </StackPanel>
                     <ListView ItemsSource="{Binding ShapesToReview}" SelectedItem="{Binding SelectedShapeForReview}"/>
                 </DockPanel>
@@ -128,10 +130,72 @@
             </GroupBox>
         </Grid>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Content="Save" Command="{Binding SaveCommand}" Style="{DynamicResource Esri_ButtonSuccess}" Margin="5,0" Width="80"/>
-            <Button Content="Skip" Command="{Binding SkipCommand}" Margin="5,0" Width="80"/>
-            <Button Content="Reject" Command="{Binding RejectCommand}" Style="{DynamicResource Esri_ButtonDanger}" Margin="5,0" Width="80"/>
-        </StackPanel>
+        <Border Grid.Row="5" Height="1" Background="{DynamicResource Esri_Gray55Brush}" Margin="0,5"/>
+
+        <GroupBox Grid.Row="6" Header="Files Submitted" Margin="0,5,0,0">
+            <ListView ItemsSource="{Binding FoundFileSets}" AlternationCount="2">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Style.Triggers>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter Property="Background" Value="{DynamicResource Esri_Gray10Brush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListView.ItemContainerStyle>
+
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="File Name" DisplayMemberBinding="{Binding FileName}" Width="200"/>
+                        <GridViewColumn Header="Type" DisplayMemberBinding="{Binding FileSetType}" Width="100"/>
+                        <GridViewColumn Header="Valid" Width="60">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ContentControl HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <ContentControl.Style>
+                                            <Style TargetType="ContentControl">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsValid}" Value="True">
+                                                        <Setter Property="Content">
+                                                            <Setter.Value>
+                                                                <Path Data="M 2,5 L 5,8 L 11,2" Stroke="Green" StrokeThickness="2"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                                        <Setter Property="Content">
+                                                            <Setter.Value>
+                                                                <Path Data="M 2,2 L 8,8 M 8,2 L 2,8" Stroke="Red" StrokeThickness="2"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ContentControl.Style>
+                                    </ContentControl>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </GroupBox>
+
+        <Grid Grid.Row="7">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="Show Results" Command="{Binding ShowResultsCommand}" 
+            HorizontalAlignment="Left" Margin="0,10,0,0"/>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button Content="Save" Command="{Binding SaveCommand}" Style="{DynamicResource Esri_ButtonSuccess}" Margin="5,0" Width="80"/>
+                <Button Content="Skip" Command="{Binding SkipCommand}" Margin="5,0" Width="80"/>
+                <Button Content="Reject" Command="{Binding RejectCommand}" Style="{DynamicResource Esri_ButtonDanger}" Margin="5,0" Width="80"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

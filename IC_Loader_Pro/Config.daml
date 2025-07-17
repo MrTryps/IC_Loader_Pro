@@ -40,7 +40,7 @@
       </controls>
       <dockPanes>
         <dockPane id="IC_Loader_Pro_Dockpane_IC_Loader" 
-                  caption="Dockpane _IC_Loader" 
+                  caption="IC_Loader" 
                   className="Dockpane_IC_LoaderViewModel" 
                   dock="group" 
                   dockWith="esri_core_projectDockPane"

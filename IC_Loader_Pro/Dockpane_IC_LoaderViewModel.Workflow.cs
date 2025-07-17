@@ -41,12 +41,13 @@ namespace IC_Loader_Pro
                 // --- Step 2: Background work ---
                 _emailQueues = await GetEmailSummariesAsync();
                 // Populate the UI summary list from the full data.
+                int totalEmailCount = _emailQueues.Values.Sum(emailList => emailList.Count);
                 var summaryList = _emailQueues.Select(kvp => new ICQueueSummary
                 {
                     Name = kvp.Key,
                     EmailCount = kvp.Value.Count
                 }).ToList();
-                Log.RecordMessage($"Step 2: Background work complete. Found {summaryList.Count} summaries.", BisLogMessageType.Note);
+                Log.RecordMessage($"Step 2: Background work complete. Found {totalEmailCount} summaries.", BisLogMessageType.Note);
 
                 // --- Step 3: Final UI update ---
                 Log.RecordMessage("Step 3: Calling RunOnUIThread to update UI with results.", BisLogMessageType.Note);
@@ -75,6 +76,18 @@ namespace IC_Loader_Pro
                 });
                 Log.RecordMessage("Step 3: Completed.", BisLogMessageType.Note);
             }
+            catch (OutlookNotResponsiveException ex)
+            {
+                await RunOnUIThread(() =>
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        $"{ex.Message}\nPlease ensure Outlook is open and running correctly before refreshing.",
+                        "Outlook Connection Error",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    StatusMessage = "Could not connect to Outlook.";
+                });
+            }           
             catch (Exception ex)
             {
                 Log.RecordError("A fatal error occurred while refreshing the IC Queues.", ex, nameof(RefreshICQueuesAsync));
@@ -147,6 +160,12 @@ namespace IC_Loader_Pro
 
                     queues[icType] = emailsInQueue;
                 }
+                catch (OutlookNotResponsiveException ex)
+                {
+                    Log.RecordError("Could not connect to Outlook.", ex, nameof(GetEmailSummariesAsync));
+                    // We only need to show the message once, so we'll re-throw to stop the loop.
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(GetEmailSummariesAsync));
@@ -160,128 +179,135 @@ namespace IC_Loader_Pro
         /// </summary>
         private async Task ProcessSelectedQueueAsync()
         {
-            if (SelectedIcType == null)
+            // --- 1. Initial UI and Configuration Setup ---
+            IsEmailActionEnabled = false;
+            _foundFileSets.Clear();
+
+            if (SelectedIcType == null || !_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
             {
-                StatusMessage = "No queue selected.";
+                CurrentEmailSubject = "Queue is empty.";
+                StatusMessage = $"Queue '{SelectedIcType?.Name}' is empty.";
                 return;
             }
 
-            EmailType? userSelectedType = null;            
-
-            var unprocessedEmails = new List<UnprocessedEmailInfo>();
-
-            // This is now our main processing loop.
-            // It continues as long as the selected queue still has emails.
-            while (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+            // Check for IC Rules settings first. A failure here is a fatal configuration problem.
+            var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
+            if (icSetting == null)
             {
-                // Get the top email from the list for this iteration.
-                var currentEmailSummary = emailsToProcess.First();
-                EmailItem emailToProcess = null; // To hold the full email object for cleanup
-                _foundFileSets.Clear();
+                var errorMsg = $"Configuration settings for '{SelectedIcType.Name}' not found. Cannot proceed.";
+                Log.RecordError(errorMsg, null, nameof(ProcessSelectedQueueAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(errorMsg, "Configuration Error");
+                return;
+            }
 
-                try
+            // This try-catch is ONLY for initialization. A failure here is also a fatal configuration error.
+            IcNamedTests namedTests;
+            try
+            {
+                namedTests = new IcNamedTests(Log, PostGreTool);
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Fatal error: Could not initialize the Named Tests service. A required test rule is likely missing from the database.", ex, nameof(ProcessSelectedQueueAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Could not start processing. A required test rule is missing. Please check the logs.", "Configuration Error");
+                return;
+            }
+
+
+            // --- 2. Main Email Processing Block ---
+            var currentEmailSummary = emailsToProcess.First();
+            EmailItem emailToProcess = null;
+
+            // This try-catch block is now only responsible for errors related to this specific email.
+            try
+            {
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(icSetting.OutlookInboxFolderPath);
+                var outlookService = new OutlookService();
+                emailToProcess = await QueuedTask.Run(() => outlookService.GetEmailById(folderPath, currentEmailSummary.Emailid, storeName));
+
+                if (emailToProcess == null)
                 {
-                    // --- 1. Fetch and Classify ---
-                    var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-                    string fullOutlookPath = icSetting.OutlookInboxFolderPath;
-                    var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
-                    var outlookService = new OutlookService();
-                    emailToProcess = await QueuedTask.Run(() => outlookService.GetEmailById(folderPath, currentEmailSummary.Emailid, storeName));
-
-                    if (emailToProcess == null)
-                    {
-                        StatusMessage = "Error: Could not retrieve email. Skipping to next.";
-                        unprocessedEmails.Add(new UnprocessedEmailInfo { Subject = currentEmailSummary.Subject, Reason = "Failed to retrieve from Outlook." });
-                        emailsToProcess.RemoveAt(0); // Remove the failed email and continue
-                        continue;
-                    }
-
-                    var classifier = new EmailClassifierService(IcRules, Log);
-                    var classification = classifier.ClassifyEmail(emailToProcess);
-
-                    // --- 2. Handle Manual Classification Pop-up ---
-                    if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
-                    {
-                        // This logic correctly shows the pop-up and handles cancellation
-                        // If the user cancels, we return from the method entirely, stopping the loop.
-                        if (await RequestManualEmailClassification(emailToProcess) is EmailType selectedType)
-                        {
-                            userSelectedType = selectedType;
-                        }
-                        else
-                        {
-                            StatusMessage = "Processing canceled by user.";
-                            unprocessedEmails.Add(new UnprocessedEmailInfo { Subject = emailToProcess.Subject, Reason = "Canceled during manual classification." });
-                            continue; // Skip to next email
-                        }
-                    }
-
-                    // --- 3. Update UI and Process in Background ---
-                    UpdateEmailInfo(emailToProcess, classification);
-
-                    var namedTests = new IcNamedTests(Log, PostGreTool);
-                    var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                    EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
-                    if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
-                    {
-                        await RunOnUIThread(() =>
-                        {
-                            _foundFileSets.Clear(); // Clear again just in case
-                            foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
-                            {
-                                // This is the line you asked about
-                                _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
-                            }
-                        });
-                    }
-                    if (!processingResult.TestResult.Passed)
-                    {
-                        unprocessedEmails.Add(new UnprocessedEmailInfo
-                        {
-                            Subject = emailToProcess.Subject,
-                            // Use the last comment as the reason, which will be accurate.
-                            Reason = processingResult.TestResult.Comments.LastOrDefault() ?? "An unknown error occurred."
-                        });
-                    }
-                    // --- 4. Update Final Status and Stats ---
-                    UpdateQueueStats(processingResult.TestResult);
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not retrieve the email with subject: '{currentEmailSummary.Subject}'. It will be skipped.", "Email Retrieval Error");
+                    await ProcessNextEmail(); // The finally block will handle cleanup
+                    return;
                 }
-                catch (Exception ex)
+
+                var classifier = new EmailClassifierService(IcRules, Log);
+                var classification = classifier.ClassifyEmail(emailToProcess);
+
+                EmailType? userSelectedType = null;
+                if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
                 {
-                    StatusMessage = "An error occurred during processing.";
-                    Log.RecordError($"Error processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
-                    unprocessedEmails.Add(new UnprocessedEmailInfo { Subject = currentEmailSummary.Subject, Reason = "An unexpected error occurred." });
+                    if (await RequestManualEmailClassification(emailToProcess) is EmailType selectedType)
+                    {
+                        userSelectedType = selectedType;
+                    }
+                    else
+                    {
+                        // User canceled the pop-up
+                        await ProcessNextEmail();
+                        return;
+                    }
                 }
-                finally
+
+                UpdateEmailInfo(emailToProcess, classification);
+
+                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
+
+                _currentEmailTestResult = processingResult.TestResult;
+                UpdateQueueStats(_currentEmailTestResult);
+
+                if (!_currentEmailTestResult.Passed)
                 {
-                    // --- 5. Cleanup and Loop ---
-                    // ALWAYS remove the processed email from the queue.
+                    ShowTestResultWindow(_currentEmailTestResult);
+                    await ProcessNextEmail();
+                    return;
+                }
+
+                if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
+                {
+                    await RunOnUIThread(() =>
+                    {
+                        _foundFileSets.Clear();
+                        foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                        {
+                            _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
+                        }
+                    });
+                }
+
+                StatusMessage = "Ready for review.";
+                IsEmailActionEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"An unexpected error occurred while processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing '{currentEmailSummary.Subject}'. The application will advance to the next email.", "Processing Error");
+                await ProcessNextEmail();
+            }
+            finally
+            {
+                // This cleanup block is now simpler and always runs for the processed email.
+                if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
+                {
                     emailsToProcess.RemoveAt(0);
-
-                    // Clean up the temporary attachment folder.
-                    CleanupTempFolder(emailToProcess);
-
-                    // Update the email count in the UI
+                }
+                CleanupTempFolder(emailToProcess);
+                if (SelectedIcType != null)
+                {
                     SelectedIcType.EmailCount = emailsToProcess.Count;
                 }
             }
+        }
 
-            if (unprocessedEmails.Any())
-            {
-                var summaryMessage = new System.Text.StringBuilder();
-                summaryMessage.AppendLine("The following emails were not fully processed and may require manual attention:");
-                summaryMessage.AppendLine();
-
-                foreach (var info in unprocessedEmails)
-                {
-                    summaryMessage.AppendLine($"• {info.Subject}: {info.Reason}");
-                }
-
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(summaryMessage.ToString(), "Queue Processing Summary");
-            }
-
-            // This message shows when the loop is finished and the queue is empty.
-            StatusMessage = $"Queue '{SelectedIcType.Name}' is empty.";
+        /// <summary>
+        /// A helper method that simply calls the main processing logic.
+        /// This will be triggered by the user action buttons.
+        /// </summary>
+        private async Task ProcessNextEmail()
+        {
+            await ProcessSelectedQueueAsync();
         }
 
         private async Task<EmailType?> RequestManualEmailClassification(EmailItem email)
@@ -303,6 +329,7 @@ namespace IC_Loader_Pro
 
         private void UpdateEmailInfo(EmailItem email, EmailClassificationResult classification)
         {
+            CurrentEmailId = email.Emailid;
             CurrentEmailSubject = email.Subject;
             CurrentPrefId = classification.PrefIds.FirstOrDefault() ?? "N/A";
             CurrentAltId = classification.AltIds.FirstOrDefault() ?? "N/A";
@@ -313,15 +340,27 @@ namespace IC_Loader_Pro
 
         private void UpdateQueueStats(IcTestResult finalResult)
         {
-            if (finalResult.Passed)
+            // The IcTestResult class aggregates the most severe action from all sub-tests.
+            // We can check this final, cumulative action.
+            switch (finalResult.CumulativeAction.ResultAction)
             {
-                SelectedIcType.PassedCount++;
-                StatusMessage = "Email processed successfully. Loading next...";
-            }
-            else
-            {
-                SelectedIcType.FailedCount++;
-                StatusMessage = $"Processing failed: {string.Join(" ", finalResult.Comments)}. Loading next...";
+                case TestActionResponse.Pass:
+                    SelectedIcType.PassedCount++;
+                    StatusMessage = "Email processed successfully. Ready for review.";
+                    break;
+
+                case TestActionResponse.Note:
+                    // This is our new "Skip" condition, based on the test rule's action.
+                    SelectedIcType.SkippedCount++;
+                    StatusMessage = "Email skipped. Loading next...";
+                    break;
+
+                case TestActionResponse.Manual:
+                case TestActionResponse.Fail:
+                    // All other non-passing actions are considered failures.
+                    SelectedIcType.FailedCount++;
+                    StatusMessage = $"Processing failed: {string.Join(" ", finalResult.Comments)}. Please review.";
+                    break;
             }
         }
 
