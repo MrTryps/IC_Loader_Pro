@@ -35,31 +35,30 @@ namespace IC_Loader_Pro
         {
             Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
 
-            // 1. Ensure there is a test result to save.
             if (_currentEmailTestResult == null)
             {
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("There is no processed email result to save.", "Save Error");
                 return;
             }
 
-            // 2. Update stats and status message.
-            IsEmailActionEnabled = false; // Disable buttons during save
+            // 1. Update stats and disable UI buttons.
+            IsEmailActionEnabled = false;
             StatusMessage = "Finalizing and saving to database...";
             SelectedIcType.PassedCount++;
 
             try
             {
-                // 3. Call the finalization service.
-                var processingService = new EmailProcessingService(IcRules, new IcNamedTests(Log, PostGreTool), Log);
-                // We need the attachment analysis result, which is currently local to ProcessSelectedQueueAsync.
-                // For now, we'll pass null. In a future refactor, we would store this on the ViewModel as well.
-                string newDelId = await processingService.FinalizeAndSaveAsync(_currentEmailTestResult, null);
+                // 2. Call the finalization service.
+                var namedTests = new IcNamedTests(Log, PostGreTool);
+                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+
+                string newDelId = await processingService.FinalizeAndSaveAsync(_currentEmailTestResult, _currentAttachmentAnalysis);
 
                 // Update the UI with the new Deliverable ID.
                 CurrentDelId = newDelId;
                 StatusMessage = "Successfully saved submission.";
 
-                // 4. Move the processed email.
+                // 3. Move the processed email.
                 var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
                 var outlookService = new OutlookService();
                 string fullOutlookPath = icSetting.OutlookInboxFolderPath;
@@ -69,7 +68,7 @@ namespace IC_Loader_Pro
                     CurrentEmailId,
                     folderPath,
                     storeName,
-                    icSetting.EmailFolderSet.ProccessedFolderName
+                    icSetting.OutlookProcessedFolderPath
                 );
             }
             catch (Exception ex)
@@ -77,12 +76,12 @@ namespace IC_Loader_Pro
                 Log.RecordError("An error occurred during the save process.", ex, nameof(OnSave));
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     "An error occurred while saving the submission. Please check the logs.",
-                    "Save Error",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Error);
+                    "Save Error");
+                // If save fails, roll back the "Passed" count.
+                SelectedIcType.PassedCount--;
             }
 
-            // 5. Advance to the next email.
+            // 4. Advance to the next email.
             await ProcessNextEmail();
         }
 
@@ -157,7 +156,7 @@ namespace IC_Loader_Pro
                 // This call is now much cleaner and delegates the work.
                 // It needs to run on a background thread to avoid freezing the UI.
                 await QueuedTask.Run(() =>
-                    processingService.HandleRejection(rejectionTestResult, folderPath, storeName)
+                    processingService.HandleRejection(rejectionTestResult, icSetting, folderPath, storeName)
                 );
             }
             catch (Exception ex)

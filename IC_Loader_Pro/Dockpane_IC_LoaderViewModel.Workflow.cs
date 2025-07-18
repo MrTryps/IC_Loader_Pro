@@ -12,7 +12,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using EmailType = IC_Loader_Pro.Models.EmailType;
 using Exception = System.Exception;
 
 namespace IC_Loader_Pro
@@ -256,11 +255,16 @@ namespace IC_Loader_Pro
                 EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
 
                 _currentEmailTestResult = processingResult.TestResult;
+                _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
                 UpdateQueueStats(_currentEmailTestResult);
 
                 if (!_currentEmailTestResult.Passed)
                 {
+                    SelectedIcType.FailedCount++;
+                    StatusMessage = $"Auto-fail: {_currentEmailTestResult.Comments.LastOrDefault()}";
                     ShowTestResultWindow(_currentEmailTestResult);
+                    // 1. Remove the failed email from the queue immediately.
+                    emailsToProcess.RemoveAt(0);
                     await ProcessNextEmail();
                     return;
                 }
@@ -284,15 +288,16 @@ namespace IC_Loader_Pro
             {
                 Log.RecordError($"An unexpected error occurred while processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing '{currentEmailSummary.Subject}'. The application will advance to the next email.", "Processing Error");
+                emailsToProcess.RemoveAt(0);
                 await ProcessNextEmail();
             }
             finally
             {
-                // This cleanup block is now simpler and always runs for the processed email.
-                if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
-                {
-                    emailsToProcess.RemoveAt(0);
-                }
+                //// This cleanup block is now simpler and always runs for the processed email.
+                //if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
+                //{
+                //    emailsToProcess.RemoveAt(0);
+                //}
                 CleanupTempFolder(emailToProcess);
                 if (SelectedIcType != null)
                 {
@@ -344,10 +349,10 @@ namespace IC_Loader_Pro
             // We can check this final, cumulative action.
             switch (finalResult.CumulativeAction.ResultAction)
             {
-                case TestActionResponse.Pass:
-                    SelectedIcType.PassedCount++;
-                    StatusMessage = "Email processed successfully. Ready for review.";
-                    break;
+                //case TestActionResponse.Pass:
+                //    SelectedIcType.PassedCount++;
+                //    StatusMessage = "Email processed successfully. Ready for review.";
+                //    break;
 
                 case TestActionResponse.Note:
                     // This is our new "Skip" condition, based on the test rule's action.

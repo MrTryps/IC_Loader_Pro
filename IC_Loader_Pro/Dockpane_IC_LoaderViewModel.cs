@@ -57,6 +57,7 @@ namespace IC_Loader_Pro
         }
 
         private IcTestResult _currentEmailTestResult;
+        private AttachmentAnalysisResult _currentAttachmentAnalysis;
 
         private string _currentEmailSubject = "No email selected";
         public string CurrentEmailSubject

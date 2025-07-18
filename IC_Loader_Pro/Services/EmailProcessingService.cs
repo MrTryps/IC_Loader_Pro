@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Media;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
+using BIS_Tools_DataModels_2025;
 
 namespace IC_Loader_Pro.Services
 {
@@ -110,7 +111,7 @@ namespace IC_Loader_Pro.Services
                 rootTestResult.Comments.Add("Attachment processing failed.");
 
                 // Call the same shared rejection handler
-                HandleRejection(rootTestResult, sourceFolderPath, sourceStoreName);
+                HandleRejection(rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
 
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
@@ -121,7 +122,9 @@ namespace IC_Loader_Pro.Services
                 _log.RecordMessage("No valid GIS datasets found in attachments.", BisLogMessageType.Warning);
                 rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("No valid GIS datasets found in attachments.");
-                outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.EmailFolderSet.CorrespondenceFolderName);
+                string destinationPath = currentIcSetting.OutlookProcessedFolderPath;
+                var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
+                outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, destFolder);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
@@ -136,86 +139,7 @@ namespace IC_Loader_Pro.Services
                 AttachmentAnalysis = attachmentAnalysis
             };
         }
-        /// <summary>
-        /// The main entry point for processing a single email.
-        /// Replicates the logic of the legacy processEmail function.
-        /// </summary>
-        /// <param name="emailId">The unique identifier of the email to process.</param>
-        public async Task<IcTestResult> ProcessEmailAsync2(string emailId, string folderPath, string storeName)
-        {
-            _log.RecordMessage($"Starting to process email with ID: {emailId}", BisLogMessageType.Note);
-
-            // 1. Create the root test result for the entire operation.
-            // We assume a test rule named "GIS_Root_Email_Load" exists.
-            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), emailId, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
-
-            // 2. Retrieve the email from Outlook.
-            EmailItem emailToProcess;
-            try
-            {
-                // Note: This part will need to be adapted depending on whether you use
-                // OutlookService or GraphApiService. This uses a placeholder for now.
-                // Use QueuedTask.Run to ensure the Outlook call happens on a background thread
-
-                emailToProcess = await ArcGIS.Desktop.Framework.Threading.Tasks.QueuedTask.Run(() => _outlookService.GetEmailById(folderPath, emailId, storeName));
-                if (emailToProcess == null)
-                {
-                    throw new FileNotFoundException($"Email with ID '{emailId}' could not be found.");
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError($"Fatal error retrieving email with ID '{emailId}'.", ex, nameof(ProcessEmailAsync));
-                rootTestResult.Passed = false;
-                rootTestResult.Comments.Add("Failed to retrieve the email from the mail server.");
-                return rootTestResult;
-            }
-
-            // 3. Classify the email to determine its type (Spam, CEA, DNA, etc.)
-            EmailClassificationResult classification = _classifier.ClassifyEmail(emailToProcess);
-
-            // 4. Handle simple cases first (Spam, Auto-Reply, Blocked, etc.)
-            switch (classification.Type)
-            {
-                case EmailType.Spam:
-                    _log.RecordMessage("Email classified as SPAM. Moving to Junk folder.", BisLogMessageType.Note);
-                    // _outlookService.MoveEmailToFolder(emailId, "Junk"); // Future implementation
-                    rootTestResult.Comments.Add("Email identified as SPAM and was moved.");
-                    rootTestResult.Passed = false; // Mark as failed to stop processing
-                    return rootTestResult;
-
-                case EmailType.AutoResponse:
-                    _log.RecordMessage("Email classified as an Auto-Response. Moving to Correspondence.", BisLogMessageType.Note);
-                    // _outlookService.MoveEmailToFolder(emailId, "Correspondence"); // Future implementation
-                    rootTestResult.Comments.Add("Email identified as an auto-response and was moved.");
-                    rootTestResult.Passed = false;
-                    return rootTestResult;
-
-                // Add cases for other simple types like BlockedEmail...
-
-                case EmailType.CEA:
-                case EmailType.DNA:
-                case EmailType.WRS:
-                    // Email is one of the types we process. Continue to the next steps.
-                    rootTestResult.Comments.Add($"Email type determined to be: {classification.Type}");
-                    break;
-
-                default:
-                    _log.RecordMessage($"Email type is '{classification.Type}' and is not configured for processing by this tool.", BisLogMessageType.Warning);
-                    // Decide if we move it to a different folder, for now we just stop.
-                    rootTestResult.Comments.Add($"Email identified as unhandled type: {classification.Type}.");
-                    rootTestResult.Passed = false;
-                    return rootTestResult;
-            }
-
-            // --- NEXT STEPS WILL GO HERE ---
-            // 5. Create the Deliverable Record in the database.
-            // 6. Save attachments and identify the file sets.
-            // 7. Run tests on each file set.
-            // 8. Aggregate results and save everything to the database.
-
-            return rootTestResult;
-        }
+       
 
         // In Services/EmailProcessingService.cs
 
@@ -249,9 +173,9 @@ namespace IC_Loader_Pro.Services
             return newDeliverableId;
         }
 
-        // In Services/EmailProcessingService.cs
 
-        public void HandleRejection(IcTestResult testResult, string sourceFolderPath, string sourceStoreName)
+
+        public void HandleRejection(IcTestResult testResult,IcGisTypeSetting icSetting, string sourceFolderPath, string sourceStoreName)
         {
             _log.RecordMessage("Handling rejection...", BisLogMessageType.Note);
 
@@ -274,15 +198,15 @@ namespace IC_Loader_Pro.Services
 
             // 4. Move the email to the 'Proccessed' folder.
             // The RefId on the test result is the email's MessageId.
-            string emailMessageId = testResult.RefId;
-            var icSetting = _rules.ReturnIcGisTypeSettings(testResult.TestRule.Name);
+            string emailMessageId = testResult.RefId;            
             var outlookService = new OutlookService();
-
+            string destinationPath = icSetting.OutlookProcessedFolderPath;
+            var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
             outlookService.MoveEmailToFolder(
                 emailMessageId,
                 sourceFolderPath,
                 sourceStoreName,
-                icSetting.EmailFolderSet.ProccessedFolderName
+                destFolder
             );
         }
     }

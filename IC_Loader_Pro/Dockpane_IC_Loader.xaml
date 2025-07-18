@@ -102,7 +102,7 @@
                 <TextBlock Text="{Binding SelectedIcType.PassedCount, FallbackValue='0'}" Margin="0,0,15,0" FontWeight="SemiBold"/>
                 <TextBlock Text="Skipped:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
                 <TextBlock Text="{Binding SelectedIcType.SkippedCount, FallbackValue='0'}" Margin="0,0,15,0" FontWeight="SemiBold"/>
-                <TextBlock Text="Failed:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
+                <TextBlock Text="Rejected:" Margin="0,0,5,0" Foreground="{DynamicResource Esri_Gray130Brush}"/>
                 <TextBlock Text="{Binding SelectedIcType.FailedCount, FallbackValue='0'}" FontWeight="SemiBold"/>
             </StackPanel>
         </Grid>

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BIS_Tools_DataModels_2025;
 
 // Note: Ensure your file is named ManualEmailClassificationViewModel.cs
 namespace IC_Loader_Pro.ViewModels
