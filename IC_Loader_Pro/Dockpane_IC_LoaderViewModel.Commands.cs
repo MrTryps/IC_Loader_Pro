@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 
 namespace IC_Loader_Pro
@@ -34,7 +35,7 @@ namespace IC_Loader_Pro
         private async Task OnSave()
         {
             Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
-
+            Outlook.Application outlookApp = null;
             if (_currentEmailTestResult == null)
             {
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("There is no processed email result to save.", "Save Error");
@@ -48,6 +49,7 @@ namespace IC_Loader_Pro
 
             try
             {
+                outlookApp = new Outlook.Application();
                 // 2. Call the finalization service.
                 var namedTests = new IcNamedTests(Log, PostGreTool);
                 var processingService = new EmailProcessingService(IcRules, namedTests, Log);
@@ -65,6 +67,7 @@ namespace IC_Loader_Pro
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 
                 outlookService.MoveEmailToFolder(
+                    outlookApp,
                     CurrentEmailId,
                     folderPath,
                     storeName,
@@ -80,8 +83,21 @@ namespace IC_Loader_Pro
                 // If save fails, roll back the "Passed" count.
                 SelectedIcType.PassedCount--;
             }
+            finally
+            {
+                // Ensure the Outlook application is released properly.
+                if (outlookApp != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+                    outlookApp = null;
+                }
+            }
 
             // 4. Advance to the next email.
+            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+            {
+                emailsToProcess.RemoveAt(0);
+            }
             await ProcessNextEmail();
         }
 
@@ -114,12 +130,16 @@ namespace IC_Loader_Pro
             UpdateQueueStats(skipTestResult);
 
             // 3. Advance to the next email.
+            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+            {
+                emailsToProcess.RemoveAt(0);
+            }
             await ProcessNextEmail();
         }
         private async Task OnReject()
         {
             Log.RecordMessage("Reject button was clicked.", BisLogMessageType.Note);
-
+            Outlook.Application outlookApp = null;          
             if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
             {
                 StatusMessage = "Nothing to reject.";
@@ -132,6 +152,7 @@ namespace IC_Loader_Pro
 
             try
             {
+                outlookApp = new Outlook.Application();
                 // 1. Create the final test result for the manual rejection.
                 var namedTests = new IcNamedTests(Log, PostGreTool);
                 var rejectionTestResult = namedTests.returnNewTestResult(
@@ -156,7 +177,7 @@ namespace IC_Loader_Pro
                 // This call is now much cleaner and delegates the work.
                 // It needs to run on a background thread to avoid freezing the UI.
                 await QueuedTask.Run(() =>
-                    processingService.HandleRejection(rejectionTestResult, icSetting, folderPath, storeName)
+                    processingService.HandleRejection(outlookApp,rejectionTestResult, icSetting, folderPath, storeName)
                 );
             }
             catch (Exception ex)
@@ -168,8 +189,19 @@ namespace IC_Loader_Pro
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
             }
+            finally {                 // Ensure the Outlook application is released properly.
+                if (outlookApp != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+                    outlookApp = null;
+                }
+            }
 
             // 4. Advance to the next email in the queue.
+            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+            {
+                emailsToProcess.RemoveAt(0);
+            }
             await ProcessNextEmail();
         }
         private async Task OnShowNotes()

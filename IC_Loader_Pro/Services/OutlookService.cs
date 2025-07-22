@@ -26,7 +26,7 @@ namespace IC_Loader_Pro.Services
         /// <param name="testSenderEmail">The email address to use for filtering.</param>
         /// <param name="isInTestMode">The flag controlling the filter mode (null, true, or false).</param>
         /// <returns>A list of EmailItem objects.</returns>
-        public List<EmailItem> GetEmailsFromFolderPath(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
+        public List<EmailItem> GetEmailsFromFolderPath(Outlook.Application outlookApp,string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
             if (!IsOutlookResponsive())
             {
@@ -40,14 +40,12 @@ namespace IC_Loader_Pro.Services
             }
 
             var results = new List<EmailItem>();
-            Outlook.Application outlookApp = null;
             Outlook.MAPIFolder targetFolder = null;
             Outlook.Items outlookItems = null;
 
             try
             {
                 var (storeName, folderPath) = ParseOutlookPath(fullFolderPath);
-                outlookApp = new Outlook.Application();
                 targetFolder = GetFolderFromPath(outlookApp.GetNamespace("MAPI"), storeName, folderPath);
 
                 if (targetFolder == null)
@@ -104,8 +102,7 @@ namespace IC_Loader_Pro.Services
             finally
             {
                 if (outlookItems != null) Marshal.ReleaseComObject(outlookItems);
-                if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+                if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);                
             }
 
             // --- NEW THREE-STATE FILTERING LOGIC ---
@@ -195,71 +192,54 @@ namespace IC_Loader_Pro.Services
         /// <summary>
         /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
         /// </summary>
-        public EmailItem GetEmailById(string folderPath, string messageId, string storeName = null)
-        {
-            // --- Start of Diagnostic Logging ---
-            Log.RecordMessage($"Attempting to get email. ID: '{messageId}', Folder Path: '{folderPath}', Store: '{storeName ?? "Default"}'.", BisLogMessageType.Note);
-            // --- End of Diagnostic Logging ---
+        // In Services/OutlookService.cs
 
-            Outlook.Application outlookApp = null;
+        /// <summary>
+        /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
+        /// This version uses a shared Outlook Application instance.
+        /// </summary>
+        public EmailItem GetEmailById(Outlook.Application outlookApp, string folderPath, string messageId, string storeName = null)
+        {
+            Log.RecordMessage($"Attempting to get email. ID: '{messageId}', Folder Path: '{folderPath}', Store: '{storeName ?? "Default"}'.", BisLogMessageType.Note);
+
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder targetFolder = null;
             Outlook.MailItem mailItem = null;
             EmailItem result = null;
 
-            // It's possible the message ID is missing the angle brackets, which are often required.
             if (!messageId.StartsWith("<")) messageId = "<" + messageId;
             if (!messageId.EndsWith(">")) messageId = messageId + ">";
 
             try
             {
-                outlookApp = new Outlook.Application();
+                // Use the passed-in outlookApp instance instead of creating a new one.
                 mapiNamespace = outlookApp.GetNamespace("MAPI");
 
                 string actualStoreName = storeName;
                 if (string.IsNullOrEmpty(actualStoreName))
                 {
                     actualStoreName = mapiNamespace.DefaultStore.DisplayName;
-                    // --- Start of Diagnostic Logging ---
-                    Log.RecordMessage($"No store name provided. Defaulting to: '{actualStoreName}'.", BisLogMessageType.Note);
-                    // --- End of Diagnostic Logging ---
                 }
 
                 targetFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, folderPath);
 
                 if (targetFolder == null)
                 {
-                    // --- Start of Diagnostic Logging ---
-                    Log.RecordError($"GetFolderFromPath returned null. Could not find folder '{folderPath}' in store '{actualStoreName}'.", null, nameof(GetEmailById));
-                    // --- End of Diagnostic Logging ---
+                    Log.RecordError($"GetFolderFromPath returned null for folder '{folderPath}' in store '{actualStoreName}'.", null, nameof(GetEmailById));
                     return null;
                 }
 
-                // --- Start of Diagnostic Logging ---
-                Log.RecordMessage($"Successfully found folder '{targetFolder.FolderPath}'. Now searching for email.", BisLogMessageType.Note);
-                // --- End of Diagnostic Logging ---
-
                 string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
-
-                // --- Start of Diagnostic Logging ---
-                Log.RecordMessage($"Using DASL filter: {filter}", BisLogMessageType.Note);
-                // --- End of Diagnostic Logging ---
-
                 object item = targetFolder.Items.Find(filter);
 
                 if (item is Outlook.MailItem foundMailItem)
                 {
                     mailItem = foundMailItem;
                     result = MapToEmailItem(mailItem);
-                    // --- Start of Diagnostic Logging ---
-                    Log.RecordMessage($"SUCCESS: Found email with subject: '{result.Subject}'.", BisLogMessageType.Note);
-                    // --- End of Diagnostic Logging ---
                 }
                 else
                 {
-                    // --- Start of Diagnostic Logging ---
-                    Log.RecordError($"The DASL query returned null. The email with ID '{messageId}' was not found in the folder '{targetFolder.FolderPath}'.", null, nameof(GetEmailById));
-                    // --- End of Diagnostic Logging ---
+                    Log.RecordError($"The DASL query returned null. Email ID '{messageId}' not found in folder '{targetFolder.FolderPath}'.", null, nameof(GetEmailById));
                 }
             }
             catch (Exception ex)
@@ -268,10 +248,11 @@ namespace IC_Loader_Pro.Services
             }
             finally
             {
+                // Release only the objects created within this method.
+                // The outlookApp object is managed by the calling method.
                 if (mailItem != null) Marshal.ReleaseComObject(mailItem);
                 if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
                 if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
             return result;
@@ -315,11 +296,10 @@ namespace IC_Loader_Pro.Services
         /// <param name="storeName">The name of the store (mailbox) for both source and destination.</param>
         /// <param name="destinationFolderPath">The path of the folder to move the email to.</param>
         /// <returns>True if the move was successful, otherwise false.</returns>
-        public bool MoveEmailToFolder(string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
+        public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
         {
             Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{destinationFolderPath}'.", BisLogMessageType.Note);
 
-            Outlook.Application outlookApp = null;
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder sourceFolder = null;
             Outlook.MAPIFolder destinationFolder = null;
@@ -334,7 +314,6 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                outlookApp = new Outlook.Application();
                 mapiNamespace = outlookApp.GetNamespace("MAPI");
                 string actualStoreName = string.IsNullOrEmpty(storeName) ? mapiNamespace.DefaultStore.DisplayName : storeName;
 
@@ -381,7 +360,6 @@ namespace IC_Loader_Pro.Services
                 if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
                 if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
                 if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
             return success;

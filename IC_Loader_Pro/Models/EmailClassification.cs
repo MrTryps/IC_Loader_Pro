@@ -22,6 +22,10 @@ namespace IC_Loader_Pro.Models
         public List<string> AltIds { get; set; } = new List<string>();
         public List<string> ActivityNums { get; set; } = new List<string>();
         public string Note { get; set; }
+        /// <summary>
+        /// A flag indicating that the user manually set the email type via the pop-up window.
+        /// </summary>
+        public bool WasManuallyClassified { get; set; } = false;
 
         public EmailClassificationResult()
         {

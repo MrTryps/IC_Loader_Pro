@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Microsoft.Kiota.Abstractions;
 using Microsoft.Kiota.Abstractions.Authentication;
 using static IC_Loader_Pro.Module1;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace IC_Loader_Pro.Services
 {
@@ -46,7 +47,7 @@ namespace IC_Loader_Pro.Services
             return new GraphApiService(graphClient);
         }
 
-        public async Task<List<EmailItem>> GetEmailsFromFolderPathAsync(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
+        public async Task<List<EmailItem>> GetEmailsFromFolderPathAsync(Outlook.Application outlookApp, string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
             if (string.IsNullOrWhiteSpace(fullFolderPath) || !fullFolderPath.StartsWith("\\\\"))
             {

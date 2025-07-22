@@ -1,14 +1,16 @@
-﻿using IC_Loader_Pro.Models;
+﻿using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using BIS_Tools_DataModels_2025;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace IC_Loader_Pro.Services
 {
@@ -44,18 +46,20 @@ namespace IC_Loader_Pro.Services
         /// <returns>The master test result for the entire operation.</returns>
         // The method's return type is changed to our new wrapper class
         public async Task<EmailProcessingResult> ProcessEmailAsync(
-            EmailItem emailToProcess,
-            EmailClassificationResult classification,
-            string selectedIcType,
-            string sourceFolderPath,
-            string sourceStoreName,
-            EmailType? manuallySelectedType)
+       Outlook.Application outlookApp,
+       EmailItem emailToProcess,
+       EmailClassificationResult classification,
+       string selectedIcType,
+       string sourceFolderPath,
+       string sourceStoreName,
+       bool wasManuallyClassified,
+       EmailType finalType)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), emailToProcess.Emailid, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
-            AttachmentAnalysisResult attachmentAnalysis = null; // To hold the analysis results
+            AttachmentAnalysisResult attachmentAnalysis = null;
 
             if (currentIcSetting == null)
             {
@@ -64,82 +68,76 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
 
-            EmailType finalType = manuallySelectedType ?? classification.Type;
-
-            // --- Corrected Subject Line Test ---
-            var subjectLineTest = _namedTests.returnNewTestResult("GIS_EmptySubjectline", "-1", IcTestResult.TestType.Deliverable);
-            if (classification.Type == EmailType.EmptySubjectline)
+            var subjectLineTest = _namedTests.returnNewTestResult("GIS_Email_Submission_Tests", "-1", IcTestResult.TestType.Deliverable);
+            if (wasManuallyClassified)
             {
-                subjectLineTest.Passed = false; // An empty subject is a failed test
-                subjectLineTest.AddComment($"Original subject was empty. User manually classified as '{finalType}'.");
+                subjectLineTest.AddComment($"User manually classified email as '{finalType}'.");
             }
-            else
-            {
-                subjectLineTest.Passed = true;
-                subjectLineTest.AddComment("Subject line is present.");
-            }
+            subjectLineTest.Passed = !string.IsNullOrWhiteSpace(emailToProcess.Subject);
+            subjectLineTest.AddComment(subjectLineTest.Passed ? "Subject line is present." : "Original subject was empty.");
             rootTestResult.AddSubordinateTestResult(subjectLineTest);
-            // ------------------------------------
 
             var outlookService = new OutlookService();
 
             // 1. Handle Spam and Auto-Replies
             if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse)
             {
-                // ... (This logic is correct and remains the same)
+                string fullDestPath = finalType == EmailType.Spam ?
+                currentIcSetting.OutlookSpamFolderPath :
+                currentIcSetting.OutlookCorrespondenceFolderPath;
+                var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
+                bool moveSucceeded = outlookService.MoveEmailToFolder(
+           outlookApp,
+           emailToProcess.Emailid,
+           sourceFolderPath,
+           sourceStoreName,
+           destFolder);
+                rootTestResult.Passed = false;
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
 
             // 2. Handle Mismatched IC Types
-            if (!finalType.ToString().Equals(selectedIcType, StringComparison.OrdinalIgnoreCase))
+            if (finalType.Name != selectedIcType)
             {
-                // ... (This logic is correct and remains the same)
+                var correctIcSetting = _rules.ReturnIcGisTypeSettings(finalType.Name);
+                if (correctIcSetting != null)
+                {
+                    outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath);
+                }
+                rootTestResult.Passed = false;
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
 
-            // 3. If we get here, the email is the correct type. Proceed with full processing.
-            rootTestResult.Comments.Add($"Email type confirmed as: {finalType}. Proceeding with attachment analysis.");
-
+            // 3. Process Attachments
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
             rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
 
             if (!attachmentAnalysis.TestResult.Passed)
             {
-                _log.RecordMessage("Processing stopped due to attachment analysis failure. Handling as a rejection.", BisLogMessageType.Warning);
                 rootTestResult.Passed = false;
-                rootTestResult.Comments.Add("Attachment processing failed.");
-
-                // Call the same shared rejection handler
-                HandleRejection(rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
-
+                HandleRejection(outlookApp, rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
-            // 4. Handle case where no GIS filesets were found
-            if (attachmentAnalysis.IdentifiedFileSets.Count == 0)
+            // 4. Handle No GIS Files Found
+            if (!attachmentAnalysis.IdentifiedFileSets.Any())
             {
-                _log.RecordMessage("No valid GIS datasets found in attachments.", BisLogMessageType.Warning);
                 rootTestResult.Passed = false;
-                rootTestResult.Comments.Add("No valid GIS datasets found in attachments.");
-                string destinationPath = currentIcSetting.OutlookProcessedFolderPath;
-                var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
-                outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, destFolder);
+                rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
+                outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
-
-            _log.RecordMessage($"Found {attachmentAnalysis.IdentifiedFileSets.Count} valid GIS datasets in attachments.", BisLogMessageType.Note);
 
             await Task.CompletedTask;
 
-            // At the end, return the complete result object
             return new EmailProcessingResult
             {
                 TestResult = rootTestResult,
                 AttachmentAnalysis = attachmentAnalysis
             };
         }
-       
+
 
         // In Services/EmailProcessingService.cs
 
@@ -175,7 +173,7 @@ namespace IC_Loader_Pro.Services
 
 
 
-        public void HandleRejection(IcTestResult testResult,IcGisTypeSetting icSetting, string sourceFolderPath, string sourceStoreName)
+        public void HandleRejection(Outlook.Application outlookApp, IcTestResult testResult,IcGisTypeSetting icSetting, string sourceFolderPath, string sourceStoreName)
         {
             _log.RecordMessage("Handling rejection...", BisLogMessageType.Note);
 
@@ -203,6 +201,7 @@ namespace IC_Loader_Pro.Services
             string destinationPath = icSetting.OutlookProcessedFolderPath;
             var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
             outlookService.MoveEmailToFolder(
+                outlookApp,
                 emailMessageId,
                 sourceFolderPath,
                 sourceStoreName,
