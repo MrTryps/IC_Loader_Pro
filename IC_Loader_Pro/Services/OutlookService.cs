@@ -6,10 +6,13 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
 using static BIS_Log;
 using static IC_Loader_Pro.Models.EmailItem;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
+using System.Diagnostics;
 
 namespace IC_Loader_Pro.Services
 {
@@ -26,9 +29,9 @@ namespace IC_Loader_Pro.Services
         /// <param name="testSenderEmail">The email address to use for filtering.</param>
         /// <param name="isInTestMode">The flag controlling the filter mode (null, true, or false).</param>
         /// <returns>A list of EmailItem objects.</returns>
-        public List<EmailItem> GetEmailsFromFolderPath(string fullFolderPath, string testSenderEmail, bool? isInTestMode)
+        public List<EmailItem> GetEmailsFromFolderPath(Outlook.Application outlookApp, string fullFolderPath, string testSenderEmail, bool? isInTestMode)
         {
-            if (!IsOutlookResponsive())
+            if (!IsOutlookResponsive(outlookApp))
             {
                 // If Outlook is not responsive, return an empty list immediately to prevent a freeze.
                 throw new OutlookNotResponsiveException("Outlook is not running or is not responsive.");
@@ -40,15 +43,15 @@ namespace IC_Loader_Pro.Services
             }
 
             var results = new List<EmailItem>();
-            Outlook.Application outlookApp = null;
+           // Outlook.Application outlookApp = null;
             Outlook.MAPIFolder targetFolder = null;
             Outlook.Items outlookItems = null;
 
             try
             {
                 var (storeName, folderPath) = ParseOutlookPath(fullFolderPath);
-                outlookApp = new Outlook.Application();
-                targetFolder = GetFolderFromPath(outlookApp.GetNamespace("MAPI"), storeName, folderPath);
+                var mapiNamespace = outlookApp.GetNamespace("MAPI");
+                targetFolder = GetFolderFromPath(mapiNamespace, storeName, folderPath);
 
                 if (targetFolder == null)
                 {
@@ -99,17 +102,22 @@ namespace IC_Loader_Pro.Services
             catch (Exception ex)
             {
                 Log.RecordError($"Failed to retrieve emails using path '{fullFolderPath}'.", ex, "GetEmailsFromFolderPath");
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                 throw;
             }
             finally
             {
                 if (outlookItems != null) Marshal.ReleaseComObject(outlookItems);
                 if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+               // if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
-            // --- NEW THREE-STATE FILTERING LOGIC ---
-            // If the flag is null or the test email is not set, do nothing.
+            // First, filter out any emails that have been previously skipped in this session.
+            var filteredResults = results
+                .Where(e => !Module1.SkippedEmailIds.Contains(e.Emailid))
+                .ToList();
+
+            // Now, apply the test mode filtering to the already-filtered list.
             if (!isInTestMode.HasValue || string.IsNullOrWhiteSpace(testSenderEmail))
             {
                 return results;
@@ -142,10 +150,150 @@ namespace IC_Loader_Pro.Services
             return (parts[0], parts[1]);
         }
 
+        public Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        {
+            const string methodName = "GetFolderFromPath";
+            Outlook.Store targetStore = null;
+            Outlook.MAPIFolder parentFolder = null;
+            Outlook.MAPIFolder childFolder = null;
+
+            try
+            {
+                targetStore = mapiNamespace.Stores
+                    .Cast<Outlook.Store>()
+                    .FirstOrDefault(s => s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
+                if (targetStore == null)
+                {
+                    Log.RecordError($"[GetFolderFromPath] Could not find a store with DisplayName: '{storeName}'.", null, methodName);
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
+                    return null;
+                }
+
+                parentFolder = targetStore.GetRootFolder();
+                var folderNames = folderPath.Split('\\');
+
+                foreach (var name in folderNames)
+                {
+                    try
+                    {
+                        // Add a small delay to give Outlook time to populate the subfolders collection
+                        System.Threading.Thread.Sleep(250);
+
+                        childFolder = parentFolder.Folders[name];
+
+                        if (parentFolder != targetStore.GetRootFolder())
+                        {
+                            Marshal.ReleaseComObject(parentFolder);
+                        }
+                        parentFolder = childFolder;
+                    }
+                    catch
+                    {
+                        Log.RecordError($"[GetFolderFromPath] CRITICAL FAILURE: Could not find the subfolder named '{name}' inside of '{parentFolder.Name}'.", null, methodName);
+                        if (childFolder != null) Marshal.ReleaseComObject(childFolder);
+                        if (parentFolder != null) Marshal.ReleaseComObject(parentFolder);
+                        if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.","Processing Error");
+                        return null;
+                    }
+                }
+                return parentFolder;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"[GetFolderFromPath] An unexpected top-level exception occurred.", ex, methodName);
+                return null;
+            }
+            finally
+            {
+                if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+            }
+        }
+
+
+        public Outlook.MAPIFolder GetFolderFromPath_old(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        {
+            const string methodName = "GetFolderFromPath";
+            Log.RecordMessage($"[GetFolderFromPath] Attempting to find folder. Store: '{storeName}', Path: '{folderPath}'.", BisLogMessageType.Note);
+            Outlook.Store targetStore = null;
+            Outlook.MAPIFolder parentFolder = null;
+            Outlook.MAPIFolder childFolder = null;
+
+            try
+            {
+                targetStore = mapiNamespace.Stores
+                    .Cast<Outlook.Store>()
+                    .FirstOrDefault(s => s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
+                if (targetStore == null)
+                {
+                    Log.RecordError($"[GetFolderFromPath] Could not find a store with DisplayName: '{storeName}'.", null, methodName);
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
+                    return null;
+                }
+
+                parentFolder = targetStore.GetRootFolder();
+                var folderNames = folderPath.Split('\\');
+
+                // Traverse the path, carefully managing each folder object.
+                Log.RecordMessage($"--- Searching inside '{parentFolder.Name}'. Found subfolders: ---", BisLogMessageType.Note);
+                foreach (var name in folderNames)
+                {
+                    System.Threading.Thread.Sleep(250); // A quarter-second pause
+                    // --- NEW DIAGNOSTIC LOGGING ---
+                    // Log all available subfolders inside the current parent folder.
+                    Log.RecordMessage($"--- Searching inside '{parentFolder.Name}'. Found subfolders: ---", BisLogMessageType.Note);
+                    foreach (Outlook.MAPIFolder subfolder in parentFolder.Folders)
+                    {
+                        Log.RecordMessage($" -> '{subfolder.Name}'", BisLogMessageType.Note);
+                        Marshal.ReleaseComObject(subfolder);
+                    }
+                    Log.RecordMessage("--------------------------------------------------", BisLogMessageType.Note);
+                    // --- END OF DIAGNOSTIC LOGGING ---
+                    try
+                    {
+                        childFolder = parentFolder.Folders[name];
+
+                        // Release the previous parent folder before assigning the new one.
+                        // We don't release the absolute root folder.
+                        if (parentFolder != targetStore.GetRootFolder())
+                        {
+                            Marshal.ReleaseComObject(parentFolder);
+                        }
+                        parentFolder = childFolder;
+                    }
+                    catch
+                    {
+                        Log.RecordError($"[GetFolderFromPath] CRITICAL FAILURE: Could not find the subfolder named '{name}' inside of '{parentFolder.Name}'.", null, methodName);
+                        // Clean up everything and exit immediately.
+                        if (childFolder != null) Marshal.ReleaseComObject(childFolder);
+                        if (parentFolder != null) Marshal.ReleaseComObject(parentFolder);
+                        if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
+                        return null;
+                    }
+                }
+                // If we successfully looped through all parts, parentFolder now holds our target folder.
+                return parentFolder;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"[GetFolderFromPath] An unexpected top-level exception occurred.", ex, methodName);
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
+                return null;
+            }
+            finally
+            {
+                // Final cleanup of the store object.
+                if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+            }
+        }
+
         /// <summary>
         /// Navigates to and retrieves a folder object based on the store and folder path.
         /// </summary>
-        private Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        private Outlook.MAPIFolder GetFolderFromPath2(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
         {
             Outlook.Store targetStore = null;
             Outlook.MAPIFolder currentFolder = null;
@@ -195,13 +343,13 @@ namespace IC_Loader_Pro.Services
         /// <summary>
         /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
         /// </summary>
-        public EmailItem GetEmailById(string folderPath, string messageId, string storeName = null)
+        public EmailItem GetEmailById(Outlook.Application outlookApp, string folderPath, string messageId, string storeName = null)
         {
             // --- Start of Diagnostic Logging ---
             Log.RecordMessage($"Attempting to get email. ID: '{messageId}', Folder Path: '{folderPath}', Store: '{storeName ?? "Default"}'.", BisLogMessageType.Note);
             // --- End of Diagnostic Logging ---
 
-            Outlook.Application outlookApp = null;
+           // Outlook.Application outlookApp = null;
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder targetFolder = null;
             Outlook.MailItem mailItem = null;
@@ -213,7 +361,6 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                outlookApp = new Outlook.Application();
                 mapiNamespace = outlookApp.GetNamespace("MAPI");
 
                 string actualStoreName = storeName;
@@ -231,6 +378,7 @@ namespace IC_Loader_Pro.Services
                 {
                     // --- Start of Diagnostic Logging ---
                     Log.RecordError($"GetFolderFromPath returned null. Could not find folder '{folderPath}' in store '{actualStoreName}'.", null, nameof(GetEmailById));
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                     // --- End of Diagnostic Logging ---
                     return null;
                 }
@@ -259,19 +407,21 @@ namespace IC_Loader_Pro.Services
                 {
                     // --- Start of Diagnostic Logging ---
                     Log.RecordError($"The DASL query returned null. The email with ID '{messageId}' was not found in the folder '{targetFolder.FolderPath}'.", null, nameof(GetEmailById));
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                     // --- End of Diagnostic Logging ---
                 }
             }
             catch (Exception ex)
             {
                 Log.RecordError($"An exception occurred within GetEmailById.", ex, nameof(GetEmailById));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
             }
             finally
             {
                 if (mailItem != null) Marshal.ReleaseComObject(mailItem);
                 if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
                 if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+               // if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
             return result;
@@ -315,11 +465,11 @@ namespace IC_Loader_Pro.Services
         /// <param name="storeName">The name of the store (mailbox) for both source and destination.</param>
         /// <param name="destinationFolderPath">The path of the folder to move the email to.</param>
         /// <returns>True if the move was successful, otherwise false.</returns>
-        public bool MoveEmailToFolder(string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
+        public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
         {
             Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{destinationFolderPath}'.", BisLogMessageType.Note);
 
-            Outlook.Application outlookApp = null;
+            //Outlook.Application outlookApp = null;
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder sourceFolder = null;
             Outlook.MAPIFolder destinationFolder = null;
@@ -329,12 +479,12 @@ namespace IC_Loader_Pro.Services
             if (string.IsNullOrEmpty(messageId) || string.IsNullOrEmpty(sourceFolderPath) || string.IsNullOrEmpty(destinationFolderPath))
             {
                 Log.RecordError("MoveEmailToFolder failed: One or more required parameters were null or empty.", null, nameof(MoveEmailToFolder));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                 return false;
             }
 
             try
             {
-                outlookApp = new Outlook.Application();
                 mapiNamespace = outlookApp.GetNamespace("MAPI");
                 string actualStoreName = string.IsNullOrEmpty(storeName) ? mapiNamespace.DefaultStore.DisplayName : storeName;
 
@@ -345,12 +495,14 @@ namespace IC_Loader_Pro.Services
                 if (sourceFolder == null)
                 {
                     Log.RecordError($"Move failed: Could not find source folder '{sourceFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                     return false;
                 }
 
                 if (destinationFolder == null)
                 {
                     Log.RecordError($"Move failed: Could not find destination folder '{destinationFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                     return false;
                 }
 
@@ -372,6 +524,7 @@ namespace IC_Loader_Pro.Services
             catch (Exception ex)
             {
                 Log.RecordError($"An exception occurred while trying to move email '{messageId}'.", ex, nameof(MoveEmailToFolder));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                 success = false;
             }
             finally
@@ -381,7 +534,7 @@ namespace IC_Loader_Pro.Services
                 if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
                 if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
                 if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
-                if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+               // if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
             }
 
             return success;
@@ -417,6 +570,7 @@ namespace IC_Loader_Pro.Services
                 catch (Exception ex)
                 {
                     Log.RecordError($"Failed to save attachment '{attachment.FileName}'.", ex, "SaveAttachmentsToTempFolder");
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                 }
                 finally
                 {
@@ -457,6 +611,7 @@ namespace IC_Loader_Pro.Services
                 catch (Exception ex)
                 {
                     Log.RecordError($"Failed to save attachment '{attachment.FileName}'.", ex, "SaveAttachmentsToTempFolder");
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing this email. The application will advance to the next email.", "Processing Error");
                 }
             }
             return tempFolderPath;
@@ -467,7 +622,7 @@ namespace IC_Loader_Pro.Services
         /// Checks if the main Outlook window is responsive by sending it a message with a timeout.
         /// </summary>
         /// <returns>True if Outlook is running and responsive, otherwise false.</returns>
-        public bool IsOutlookResponsive()
+        public bool IsOutlookResponsive(Outlook.Application outlookApp)
         {
             // The class name for the main Outlook window is "rctrl_renwnd32"
             IntPtr outlookHandle = Win32Helper.FindWindow("rctrl_renwnd32", null);
@@ -505,6 +660,59 @@ namespace IC_Loader_Pro.Services
             }
         }
         #endregion
+
+
+        /// <summary>
+        /// Attempts to forcefully restart the Microsoft Outlook application after getting user confirmation.
+        /// </summary>
+        /// <returns>True if the restart was attempted, false if the user canceled.</returns>
+        public static async Task<bool> TryRestartOutlook()
+        {
+            // 1. Ask the user for permission and warn them about data loss.
+            var message = "The application has detected that Microsoft Outlook is not responding.\n\n" +
+                          "Would you like to try and forcefully restart it?\n\n" +
+                          "WARNING: This will close Outlook without saving any unsaved work (such as draft emails).";
+
+            var result = MessageBox.Show(message, "Outlook Unresponsive", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                // User clicked "No" or closed the dialog.
+                return false;
+            }
+
+            try
+            {
+                // 2. Find all running Outlook processes.
+                Process[] outlookProcesses = Process.GetProcessesByName("outlook");
+                if (!outlookProcesses.Any())
+                {
+                    // Outlook is not running, so we can just try to start it.
+                    Process.Start("outlook.exe");
+                    return true;
+                }
+
+                // 3. Forcefully terminate (kill) each Outlook process.
+                foreach (var process in outlookProcesses)
+                {
+                    process.Kill();
+                }
+
+                // Give the OS a moment to release the processes.
+                await Task.Delay(2000); // 2-second delay
+
+                // 4. Start a new instance of Outlook.
+                Process.Start("outlook.exe");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Failed to restart Outlook.", ex, "TryRestartOutlook");
+                MessageBox.Show($"An error occurred while trying to restart Outlook: {ex.Message}", "Restart Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
+        }
 
     }
 }

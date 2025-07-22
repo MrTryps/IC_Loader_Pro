@@ -116,10 +116,10 @@ namespace IC_Loader_Pro
             SearchCommand = new RelayCommand(async () => await OnSearch(), () => IsUIEnabled);
             ToolsCommand = new RelayCommand(async () => await OnTools(), () => IsUIEnabled);
             OptionsCommand = new RelayCommand(async () => await OnOptions(), () => IsUIEnabled);
-            ShowResultsCommand = new RelayCommand(OnShowResults, () => _currentEmailTestResult != null);
+            ShowResultsCommand = new RelayCommand(OnShowResults, () => _currentEmailTestResult != null);          
         }
         #endregion
-     
+
         #region Public Properties and Commands for UI Binding
 
         /// <summary>

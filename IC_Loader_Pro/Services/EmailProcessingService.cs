@@ -1,14 +1,16 @@
-﻿using IC_Loader_Pro.Models;
+﻿using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using BIS_Tools_DataModels_2025;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace IC_Loader_Pro.Services
 {
@@ -44,12 +46,14 @@ namespace IC_Loader_Pro.Services
         /// <returns>The master test result for the entire operation.</returns>
         // The method's return type is changed to our new wrapper class
         public async Task<EmailProcessingResult> ProcessEmailAsync(
+            Outlook.Application outlookApp,
             EmailItem emailToProcess,
             EmailClassificationResult classification,
             string selectedIcType,
             string sourceFolderPath,
             string sourceStoreName,
-            EmailType? manuallySelectedType)
+            bool wasManuallyClassified, 
+            EmailType finalType)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
@@ -64,7 +68,7 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
 
-            EmailType finalType = manuallySelectedType ?? classification.Type;
+            //EmailType finalType = manuallySelectedType ?? classification.Type;
 
             // --- Corrected Subject Line Test ---
             var subjectLineTest = _namedTests.returnNewTestResult("GIS_EmptySubjectline", "-1", IcTestResult.TestType.Deliverable);
@@ -111,7 +115,7 @@ namespace IC_Loader_Pro.Services
                 rootTestResult.Comments.Add("Attachment processing failed.");
 
                 // Call the same shared rejection handler
-                HandleRejection(rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
+                HandleRejection(outlookApp, rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
 
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
@@ -124,7 +128,7 @@ namespace IC_Loader_Pro.Services
                 rootTestResult.Comments.Add("No valid GIS datasets found in attachments.");
                 string destinationPath = currentIcSetting.OutlookProcessedFolderPath;
                 var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
-                outlookService.MoveEmailToFolder(emailToProcess.Emailid, sourceFolderPath, sourceStoreName, destFolder);
+                outlookService.MoveEmailToFolder(outlookApp,emailToProcess.Emailid, sourceFolderPath, sourceStoreName, destFolder);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
@@ -175,7 +179,7 @@ namespace IC_Loader_Pro.Services
 
 
 
-        public void HandleRejection(IcTestResult testResult,IcGisTypeSetting icSetting, string sourceFolderPath, string sourceStoreName)
+        public void HandleRejection(Outlook.Application outlookApp, IcTestResult testResult,IcGisTypeSetting icSetting, string sourceFolderPath, string sourceStoreName)
         {
             _log.RecordMessage("Handling rejection...", BisLogMessageType.Note);
 
@@ -203,11 +207,82 @@ namespace IC_Loader_Pro.Services
             string destinationPath = icSetting.OutlookProcessedFolderPath;
             var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
             outlookService.MoveEmailToFolder(
+                outlookApp,
                 emailMessageId,
                 sourceFolderPath,
                 sourceStoreName,
                 destFolder
             );
         }
+
+        /// <summary>
+        /// (TEMPORARY TEST) A diagnostic method to test folder lookups using a single,
+        /// persistent Outlook application instance for all operations.
+        /// </summary>
+        public async Task RunFolderConsistencyTestAsync()
+        {
+            _log.RecordMessage("--- Starting Single-Connection Folder Consistency Test ---", BisLogMessageType.Note);
+            Microsoft.Office.Interop.Outlook.Application outlookApp = null;
+
+            try
+            {
+                // 1. Create a single Outlook instance at the start.
+                outlookApp = new Microsoft.Office.Interop.Outlook.Application();
+                var outlookService = new OutlookService();
+
+                // 2. Simulate the first operation: reading emails from the Inbox.
+                _log.RecordMessage("[Test] Simulating finding the main CEA inbox...", BisLogMessageType.Note);
+                var icSetting = _rules.ReturnIcGisTypeSettings("CEA");
+
+                // --- THIS IS THE CORRECTED STORE NAME ---
+                var (storeName, inboxPath) = OutlookService.ParseOutlookPath(icSetting.OutlookInboxFolderPath);
+                // ----------------------------------------
+
+                var inboxFolder = outlookService.GetFolderFromPath(outlookApp.GetNamespace("MAPI"), storeName, inboxPath);
+                if (inboxFolder != null)
+                {
+                    _log.RecordMessage("[Test] Successfully found the Inbox folder.", BisLogMessageType.Note);
+                    Marshal.ReleaseComObject(inboxFolder);
+                }
+                else
+                {
+                    _log.RecordError("[Test] FAILED to find the Inbox folder.", null, "RunFolderConsistencyTest");
+                    return;
+                }
+
+                // 3. Immediately simulate the second operation: finding the "Processed" subfolder.
+                _log.RecordMessage("[Test] Immediately attempting to find the 'CEA_Processed' subfolder...", BisLogMessageType.Note);
+                string processedPath = icSetting.OutlookProcessedFolderPath;
+                var (procStore, procFolderPath) = OutlookService.ParseOutlookPath(processedPath);
+
+                // Use the SAME outlookApp instance for the second call.
+                var processedFolder = outlookService.GetFolderFromPath(outlookApp.GetNamespace("MAPI"), procStore, procFolderPath);
+
+                if (processedFolder != null)
+                {
+                    _log.RecordMessage($"[Test] SUCCESS: Successfully found the destination folder '{processedFolder.FolderPath}'.", BisLogMessageType.Note);
+                    Marshal.ReleaseComObject(processedFolder);
+                }
+                else
+                {
+                    _log.RecordError($"[Test] FAILED to find the destination folder '{processedPath}'.", null, "RunFolderConsistencyTest");
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.RecordError("An unexpected exception occurred during the consistency test.", ex, "RunFolderConsistencyTest");
+            }
+            finally
+            {
+                // 4. Clean up the single instance at the very end.
+                if (outlookApp != null)
+                {
+                    Marshal.ReleaseComObject(outlookApp);
+                    _log.RecordMessage("--- Single-Connection Test Complete ---", BisLogMessageType.Note);
+                }
+            }
+        }
+
+
     }
 }
