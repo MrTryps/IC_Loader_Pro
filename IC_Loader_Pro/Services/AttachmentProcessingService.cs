@@ -4,8 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using static BIS_Log;
 
 namespace IC_Loader_Pro.Services
@@ -208,10 +206,6 @@ namespace IC_Loader_Pro.Services
             }
 
             return analysisResult;
-        }    
-
-
-
-
+        }
     }
 }

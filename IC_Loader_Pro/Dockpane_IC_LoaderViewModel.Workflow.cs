@@ -1,5 +1,4 @@
 ﻿using ArcGIS.Desktop.Framework;
-using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
@@ -10,13 +9,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using EmailType = BIS_Tools_DataModels_2025.EmailType;
 using Exception = System.Exception;
-using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace IC_Loader_Pro
 {
@@ -33,38 +29,16 @@ namespace IC_Loader_Pro
             await RunOnUIThread(() =>
             {
                 IsUIEnabled = false;
-                StatusMessage = "Connecting to Outlook and loading queues...";
+                StatusMessage = "Loading email queues...";
             });
-
-            Outlook.Application outlookApp = null; // Our single, shared instance
+            Log.RecordMessage("Step 1: Completed.", BisLogMessageType.Note);
 
             Log.RecordMessage("Refreshing IC Queue summaries from source...", BisLogMessageType.Note);
 
             try
             {
                 // --- Step 2: Background work ---
-                outlookApp = new Outlook.Application();
-                var outlookService = new OutlookService(); // For the responsiveness check
-                                                           // Check for responsiveness first
-                if (!outlookService.IsOutlookResponsive(outlookApp))
-                {
-                    throw new Services.OutlookNotResponsiveException("Outlook is not running or is not responsive.");
-                }
-
-                var result = await GetEmailSummariesAsync(outlookApp);
-                _emailQueues = result.Success;
-
-                if (result.FailedQueues.Any())
-                {
-                    string failedQueueNames = string.Join(", ", result.FailedQueues);
-                    string errorMessage = $"The following email queues could not be loaded because their Outlook folders were not found:\n\n- {failedQueueNames}";
-                    await RunOnUIThread(() =>
-                    {
-                        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(errorMessage, "Missing Outlook Folders");
-                    });
-                }
-
-
+                _emailQueues = await GetEmailSummariesAsync();
                 // Populate the UI summary list from the full data.
                 int totalEmailCount = _emailQueues.Values.Sum(emailList => emailList.Count);
                 var summaryList = _emailQueues.Select(kvp => new ICQueueSummary
@@ -103,25 +77,15 @@ namespace IC_Loader_Pro
             }
             catch (OutlookNotResponsiveException ex)
             {
-                Log.RecordError("Could not connect to Outlook.", ex, nameof(RefreshICQueuesAsync));
-                await RunOnUIThread(async () =>
+                await RunOnUIThread(() =>
                 {
-                    await OutlookService.TryRestartOutlook();
-                    StatusMessage = "Outlook restart attempted. Please try refreshing again.";
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        $"{ex.Message}\nPlease ensure Outlook is open and running correctly before refreshing.",
+                        "Outlook Connection Error",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    StatusMessage = "Could not connect to Outlook.";
                 });
-
-                // After the restart attempt, you might want to try the refresh again or just inform the user.
-                StatusMessage = "Outlook restart attempted. Please try refreshing the queues again.";
-
-                //await RunOnUIThread(() =>
-                //{
-                //    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                //        $"{ex.Message}\nPlease ensure Outlook is open and running correctly before refreshing.",
-                //        "Outlook Connection Error",
-                //        System.Windows.MessageBoxButton.OK,
-                //        System.Windows.MessageBoxImage.Warning);
-                //    StatusMessage = "Could not connect to Outlook.";
-                //});
             }           
             catch (Exception ex)
             {
@@ -131,26 +95,23 @@ namespace IC_Loader_Pro
             finally
             {
                 // --- Step 4: Re-enable UI ---
-                if (outlookApp != null)
-                {
-                    Marshal.ReleaseComObject(outlookApp);
-                }
+                Log.RecordMessage("Step 4: Calling RunOnUIThread to re-enable UI.", BisLogMessageType.Note);
                 await RunOnUIThread(() => { IsUIEnabled = true; });
+                Log.RecordMessage("Step 4: Completed.", BisLogMessageType.Note);
             }
         }
 
         /// <summary>
         /// This helper method is now fully async from top to bottom.
         /// </summary>
-        private async Task<(Dictionary<string, List<EmailItem>> Success, List<string> FailedQueues)> GetEmailSummariesAsync(Outlook.Application outlookApp)
+        private async Task<Dictionary<string, List<EmailItem>>> GetEmailSummariesAsync()
         {
             var rulesEngine = Module1.IcRules;
             var queues = new Dictionary<string, List<EmailItem>>(StringComparer.OrdinalIgnoreCase);
-            var failedQueues = new List<string>(); // List to track failures
 
             // Determine which service to use
             GraphApiService graphService = null;
-            var outlookService = new OutlookService();
+            OutlookService outlookService = null;
 
             if (useGraphApi)
             {
@@ -160,7 +121,7 @@ namespace IC_Loader_Pro
             else
             {
                 Log.RecordMessage("Using Outlook Interop Service.", BisLogMessageType.Note);
-                outlookService = new OutlookService();               
+                outlookService = new OutlookService();
             }
 
             foreach (string icType in rulesEngine.ReturnIcTypes())
@@ -193,7 +154,7 @@ namespace IC_Loader_Pro
                     {
                         // Use QueuedTask.Run to move the synchronous Outlook Interop call off the UI thread.
                         emailsInQueue = await QueuedTask.Run(() =>
-                            outlookService.GetEmailsFromFolderPath(outlookApp,outlookFolderPath, testSender, testModeFlag));
+                            outlookService.GetEmailsFromFolderPath(outlookFolderPath, testSender, testModeFlag));
                     }
 
                     queues[icType] = emailsInQueue;
@@ -206,11 +167,10 @@ namespace IC_Loader_Pro
                 }
                 catch (Exception ex)
                 {
-                    Log.RecordError($"An error occurred while processing queue '{icType}'. It will be skipped.", ex, nameof(GetEmailSummariesAsync));
-                    failedQueues.Add(icType);
+                    Log.RecordError($"An error occurred while processing queue '{icType}'.", ex, nameof(GetEmailSummariesAsync));
                 }
             }
-            return (queues, failedQueues);
+            return queues;
         }
 
         /// <summary>
@@ -229,69 +189,86 @@ namespace IC_Loader_Pro
                 return;
             }
 
-            // NEW CHANGE: Initialize the named tests service once at the start.
-            // This is safer and prevents re-creating it inside a try-catch block.
-            var namedTests = new IcNamedTests(Log, PostGreTool);
-            var currentEmailSummary = emailsToProcess.First();
-            EmailItem emailToProcess = null;
-            bool wasAutoAdvanced = false; // Flag to track if we should auto-advance
-            Outlook.Application outlookApp = null;
+            // Check for IC Rules settings first. A failure here is a fatal configuration problem.
+            var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
+            if (icSetting == null)
+            {
+                var errorMsg = $"Configuration settings for '{SelectedIcType.Name}' not found. Cannot proceed.";
+                Log.RecordError(errorMsg, null, nameof(ProcessSelectedQueueAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(errorMsg, "Configuration Error");
+                return;
+            }
 
+            // This try-catch is ONLY for initialization. A failure here is also a fatal configuration error.
+            IcNamedTests namedTests;
             try
             {
-                outlookApp = new Outlook.Application();
-                // --- 2. Fetch and Classify the Email ---
-                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
+                namedTests = new IcNamedTests(Log, PostGreTool);
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Fatal error: Could not initialize the Named Tests service. A required test rule is likely missing from the database.", ex, nameof(ProcessSelectedQueueAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Could not start processing. A required test rule is missing. Please check the logs.", "Configuration Error");
+                return;
+            }
+
+
+            // --- 2. Main Email Processing Block ---
+            var currentEmailSummary = emailsToProcess.First();
+            EmailItem emailToProcess = null;
+
+            // This try-catch block is now only responsible for errors related to this specific email.
+            try
+            {
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(icSetting.OutlookInboxFolderPath);
                 var outlookService = new OutlookService();
-                emailToProcess = await QueuedTask.Run(() => outlookService.GetEmailById(outlookApp,folderPath, currentEmailSummary.Emailid, storeName));
+                emailToProcess = await QueuedTask.Run(() => outlookService.GetEmailById(folderPath, currentEmailSummary.Emailid, storeName));
 
                 if (emailToProcess == null)
                 {
-                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not retrieve the email: '{currentEmailSummary.Subject}'. It will be skipped.", "Email Retrieval Error");
-                    await ProcessNextEmail();
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not retrieve the email with subject: '{currentEmailSummary.Subject}'. It will be skipped.", "Email Retrieval Error");
+                    await ProcessNextEmail(); // The finally block will handle cleanup
                     return;
                 }
 
                 var classifier = new EmailClassifierService(IcRules, Log);
                 var classification = classifier.ClassifyEmail(emailToProcess);
 
-                bool userDidSelect = false;
-                EmailType finalEmailType = classification.Type;
-                //EmailType? userSelectedType = null;
+                EmailType? userSelectedType = null;
                 if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
                 {
-                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess);
-                    if (wasSelected)
+                    if (await RequestManualEmailClassification(emailToProcess) is EmailType selectedType)
                     {
-                        userDidSelect = true;
-                        finalEmailType = selectedType;                        
+                        userSelectedType = selectedType;
                     }
                     else
                     {
-                        await ProcessNextEmail(); // User canceled, skip to next.
+                        // User canceled the pop-up
+                        await ProcessNextEmail();
                         return;
                     }
                 }
 
-                UpdateEmailInfo(emailToProcess, classification, userDidSelect, finalEmailType);
+                UpdateEmailInfo(emailToProcess, classification);
 
-                // --- 3. Process the Email and Handle the Result ---
                 var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp,emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userDidSelect, finalEmailType);
+                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, userSelectedType);
 
                 _currentEmailTestResult = processingResult.TestResult;
+                _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
                 UpdateQueueStats(_currentEmailTestResult);
 
                 if (!_currentEmailTestResult.Passed)
                 {
-                    wasAutoAdvanced = true; // Mark for auto-advancement
+                    SelectedIcType.FailedCount++;
+                    StatusMessage = $"Auto-fail: {_currentEmailTestResult.Comments.LastOrDefault()}";
                     ShowTestResultWindow(_currentEmailTestResult);
-                    await ProcessNextEmail(); // Auto-fail: show results and advance
+                    // 1. Remove the failed email from the queue immediately.
+                    emailsToProcess.RemoveAt(0);
+                    await ProcessNextEmail();
                     return;
                 }
 
-                // --- 4. On Success, Populate UI and Wait for User Input ---
                 if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
                 {
                     await RunOnUIThread(() =>
@@ -305,37 +282,27 @@ namespace IC_Loader_Pro
                 }
 
                 StatusMessage = "Ready for review.";
-                IsEmailActionEnabled = true; // Enable Save/Skip/Reject buttons
+                IsEmailActionEnabled = true;
             }
             catch (Exception ex)
             {
                 Log.RecordError($"An unexpected error occurred while processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred. The application will advance to the next email.", "Processing Error");
-                await ProcessNextEmail(); // On unexpected error, advance to the next email.
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An unexpected error occurred while processing '{currentEmailSummary.Subject}'. The application will advance to the next email.", "Processing Error");
+                emailsToProcess.RemoveAt(0);
+                await ProcessNextEmail();
             }
             finally
             {
-                // NEW CHANGE: The 'finally' block is now the single, guaranteed place
-                // where the processed email is removed from the queue and cleaned up.
-                // This prevents all the bugs related to double-removal or getting stuck.
-                if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
-                {
-                    emailsToProcess.RemoveAt(0);
-                }
+                //// This cleanup block is now simpler and always runs for the processed email.
+                //if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
+                //{
+                //    emailsToProcess.RemoveAt(0);
+                //}
                 CleanupTempFolder(emailToProcess);
                 if (SelectedIcType != null)
                 {
                     SelectedIcType.EmailCount = emailsToProcess.Count;
                 }
-                // If the email was auto-failed or had an error, immediately process the next one.
-                if (wasAutoAdvanced)
-                {
-                    await ProcessNextEmail();
-                }
-                //if (outlookApp != null)
-                //{
-                //    Marshal.ReleaseComObject(outlookApp);
-                //}
             }
         }
 
@@ -348,10 +315,9 @@ namespace IC_Loader_Pro
             await ProcessSelectedQueueAsync();
         }
 
-        private async Task<(bool wasSelected, EmailType selectedType)> RequestManualEmailClassification(EmailItem email)
+        private async Task<EmailType?> RequestManualEmailClassification(EmailItem email)
         {
             var attachmentNames = email.Attachments.Select(a => a.FileName).ToList();
-            // Ensure you have a ViewModel for your popup, e.g., ManualEmailClassificationViewModel
             var popupViewModel = new ViewModels.ManualEmailClassificationViewModel(email.SenderEmailAddress, email.Subject, attachmentNames);
             var popupWindow = new Views.ManualEmailClassificationWindow
             {
@@ -360,15 +326,13 @@ namespace IC_Loader_Pro
             };
 
             if (popupWindow.ShowDialog() == true)
-            {
-                // Return true and the user's selection
-                return (true, popupViewModel.SelectedEmailType);
+            {                
+                return popupViewModel.SelectedEmailType; // User clicked OK
             }
-            // Return false and a default value
-            return (false, EmailType.Unknown);
+            return null; // User canceled
         }
 
-        private void UpdateEmailInfo(EmailItem email, EmailClassificationResult classification, bool wasManuallySelected, EmailType finalType)
+        private void UpdateEmailInfo(EmailItem email, EmailClassificationResult classification)
         {
             CurrentEmailId = email.Emailid;
             CurrentEmailSubject = email.Subject;
@@ -376,16 +340,7 @@ namespace IC_Loader_Pro
             CurrentAltId = classification.AltIds.FirstOrDefault() ?? "N/A";
             CurrentActivityNum = classification.ActivityNums.FirstOrDefault() ?? "N/A";
             CurrentDelId = "Pending";
-
-            // If a type was manually selected, use that for the status message.
-            if (wasManuallySelected)
-            {
-                StatusMessage = $"Processing email as type '{finalType.Value}'...";
-            }
-            else
-            {
-                StatusMessage = "Processing...";
-            }
+            StatusMessage = "Processing...";
         }
 
         private void UpdateQueueStats(IcTestResult finalResult)
@@ -431,120 +386,6 @@ namespace IC_Loader_Pro
                 }
             }
         }
-
-        /// <summary>
-        /// A temporary diagnostic method to debug Outlook folder access issues.
-        /// </summary>
-        /// <summary>
-        /// A temporary diagnostic method that calls the folder consistency test in the service layer.
-        /// </summary>
-        private async Task TestFolderAccessAsync2()
-        {
-            StatusMessage = "Running folder consistency test...";
-
-
-            // We need an instance of the service to call the method.
-            var namedTests = new IcNamedTests(Log, PostGreTool);
-            var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-
-            // Call the test method.
-            await processingService.RunFolderConsistencyTestAsync();
-
-            StatusMessage = "Consistency test complete. Check the log file.";
-        }
-
-
-        /// <summary>
-        /// A temporary diagnostic method to debug Outlook folder access issues.
-        /// </summary>
-        private async Task TestFolderAccessAsyncB()
-        {
-            Log.AddBlankLine();
-            Log.RecordMessage("--- Starting Outlook Folder Diagnostic Test ---", BisLogMessageType.Note);
-            StatusMessage = "Running folder diagnostic...";
-
-            // --- CONFIGURE YOUR TEST HERE ---
-            // Change these values to test different paths
-            string targetStoreName = "DEP srpgis_cea [DEP]";
-            string targetFolderPath = "Inbox\\CEA_Processed";
-            // --------------------------------
-
-            await QueuedTask.Run(() =>
-            {
-                Outlook.Application outlookApp = null;
-                Outlook.NameSpace mapiNamespace = null;
-                Outlook.Store targetStore = null;
-                Outlook.MAPIFolder currentFolder = null;
-
-                try
-                {
-                    outlookApp = new Outlook.Application();
-                    mapiNamespace = outlookApp.GetNamespace("MAPI");
-
-                    // 1. List all available stores
-                    Log.RecordMessage("--- Available Mailbox Stores ---", BisLogMessageType.Note);
-                    foreach (Outlook.Store store in mapiNamespace.Stores)
-                    {
-                        Log.RecordMessage($"Found Store: '{store.DisplayName}'", BisLogMessageType.Note);
-                        Marshal.ReleaseComObject(store);
-                    }
-                    Log.RecordMessage("---------------------------------", BisLogMessageType.Note);
-
-                    // 2. Try to find the target store
-                    targetStore = mapiNamespace.Stores
-                        .Cast<Outlook.Store>()
-                        .FirstOrDefault(s => s.DisplayName.Equals(targetStoreName, StringComparison.OrdinalIgnoreCase));
-
-                    if (targetStore == null)
-                    {
-                        Log.RecordError($"TEST FAILED: Could not find the store named '{targetStoreName}'. Please check for typos or if the mailbox is added to Outlook.", null, "TestFolderAccess");
-                        return;
-                    }
-                    Log.RecordMessage($"Successfully found store: '{targetStore.DisplayName}'", BisLogMessageType.Note);
-
-                    // 3. Traverse the folder path step-by-step
-                    currentFolder = targetStore.GetRootFolder();
-                    Log.RecordMessage($"Starting search from root folder: '{currentFolder.Name}'", BisLogMessageType.Note);
-
-                    var folderNames = targetFolderPath.Split('\\');
-                    foreach (var name in folderNames)
-                    {
-                        Outlook.MAPIFolder nextFolder = null;
-                        try
-                        {
-                            nextFolder = currentFolder.Folders[name];
-                            Log.RecordMessage($"  -> Successfully entered subfolder: '{name}'", BisLogMessageType.Note);
-
-                            // Release the previous folder and move to the next one
-                            if (currentFolder != targetStore.GetRootFolder()) Marshal.ReleaseComObject(currentFolder);
-                            currentFolder = nextFolder;
-                        }
-                        catch
-                        {
-                            Log.RecordError($"TEST FAILED: Could not find the subfolder named '{name}' inside of '{currentFolder.Name}'.", null, "TestFolderAccess");
-                            if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
-                            return; // Stop the test
-                        }
-                    }
-
-                    Log.RecordMessage($"--- DIAGNOSTIC SUCCEEDED: Successfully navigated to the final folder '{currentFolder.FolderPath}' ---", BisLogMessageType.Note);
-                }
-                catch (Exception ex)
-                {
-                    Log.RecordError("An unexpected exception occurred during the diagnostic test.", ex, "TestFolderAccess");
-                }
-                finally
-                {
-                    // Clean up all COM objects
-                    if (currentFolder != null) Marshal.ReleaseComObject(currentFolder);
-                    if (targetStore != null) Marshal.ReleaseComObject(targetStore);
-                    if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
-                    if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
-                }
-            });
-
-            StatusMessage = "Diagnostic test complete. Check the log file.";
-        }     
 
     }
 }

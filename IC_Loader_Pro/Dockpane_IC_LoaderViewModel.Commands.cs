@@ -7,13 +7,12 @@ using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using Outlook = Microsoft.Office.Interop.Outlook;
+
 
 namespace IC_Loader_Pro
 {
@@ -46,7 +45,6 @@ namespace IC_Loader_Pro
             IsEmailActionEnabled = false;
             StatusMessage = "Finalizing and saving to database...";
             SelectedIcType.PassedCount++;
-            Outlook.Application outlookApp = null;
 
             try
             {
@@ -62,13 +60,11 @@ namespace IC_Loader_Pro
 
                 // 3. Move the processed email.
                 var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-                outlookApp = new Microsoft.Office.Interop.Outlook.Application();
                 var outlookService = new OutlookService();
                 string fullOutlookPath = icSetting.OutlookInboxFolderPath;
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 
                 outlookService.MoveEmailToFolder(
-                    outlookApp,
                     CurrentEmailId,
                     folderPath,
                     storeName,
@@ -83,13 +79,6 @@ namespace IC_Loader_Pro
                     "Save Error");
                 // If save fails, roll back the "Passed" count.
                 SelectedIcType.PassedCount--;
-            }
-            finally
-            {
-                if (outlookApp != null)
-                {
-                    Marshal.ReleaseComObject(outlookApp);
-                }
             }
 
             // 4. Advance to the next email.
@@ -120,7 +109,6 @@ namespace IC_Loader_Pro
 
             // (Optional) You could record this skip action to the database if needed.
             // skipTestResult.RecordResults();
-            Module1.SkippedEmailIds.Add(CurrentEmailId);
 
             // 2. Update the queue statistics.
             UpdateQueueStats(skipTestResult);
@@ -137,7 +125,7 @@ namespace IC_Loader_Pro
                 StatusMessage = "Nothing to reject.";
                 return;
             }
-            Outlook.Application outlookApp = null;
+
             // Disable the action buttons while processing
             IsEmailActionEnabled = false;
             StatusMessage = "Processing rejection...";
@@ -145,7 +133,6 @@ namespace IC_Loader_Pro
             try
             {
                 // 1. Create the final test result for the manual rejection.
-                outlookApp = new Outlook.Application();
                 var namedTests = new IcNamedTests(Log, PostGreTool);
                 var rejectionTestResult = namedTests.returnNewTestResult(
                     "GIS_Root_Email_Load",
@@ -169,7 +156,7 @@ namespace IC_Loader_Pro
                 // This call is now much cleaner and delegates the work.
                 // It needs to run on a background thread to avoid freezing the UI.
                 await QueuedTask.Run(() =>
-                    processingService.HandleRejection(outlookApp, rejectionTestResult, icSetting, folderPath, storeName)
+                    processingService.HandleRejection(rejectionTestResult, icSetting, folderPath, storeName)
                 );
             }
             catch (Exception ex)
@@ -180,13 +167,6 @@ namespace IC_Loader_Pro
                     "Rejection Error",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
-            }
-            finally
-            {
-                if (outlookApp != null)
-                {
-                    Marshal.ReleaseComObject(outlookApp);
-                }
             }
 
             // 4. Advance to the next email in the queue.

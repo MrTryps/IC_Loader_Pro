@@ -2,7 +2,6 @@
 using ArcGIS.Desktop.Framework.Contracts;
 using IC_Rules_2025;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 
@@ -19,11 +18,6 @@ namespace IC_Loader_Pro
         private static BisDbAccess _accessTool;
         private static Bis_Regex _regexTool = null;
         private static BisFileTools _fileTool = null;
-        /// <summary>
-        /// A session-wide set of InternetMessageIds for emails that have been skipped
-        /// and should not be re-loaded during a refresh.
-        /// </summary>
-        public static HashSet<string> SkippedEmailIds { get; } = new HashSet<string>();
 
         /// <summary>
         /// Retrieve the singleton instance to this module here
@@ -79,11 +73,6 @@ namespace IC_Loader_Pro
         {
             // First, set the singleton instance of the module.
             _this = this;
-
-            // Subscribe to the AppDomain's global unhandled exception event.
-            // This is our final safety net.
-            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-            // ------------------------------------
 
             // Second, create instances of all core, shared services.
             // By doing this here, we guarantee they are ready before any UI
@@ -174,18 +163,5 @@ namespace IC_Loader_Pro
 
         #endregion Overrides
 
-        private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
-        {
-            // Log the fatal, unhandled exception
-            Log.RecordError("A fatal, unhandled exception occurred.", e.ExceptionObject as Exception, "GlobalExceptionHandler");
-
-            // This is the pop-up message for a serious, unhandled error
-            System.Windows.MessageBox.Show(
-                "The application has encountered a serious error and may become unstable.\n\n" +
-                "Please save your work and restart ArcGIS Pro. The error has been recorded in the log file.",
-                "Fatal Application Error",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
-        }
     }
 }

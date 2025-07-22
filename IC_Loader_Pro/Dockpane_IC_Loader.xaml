@@ -188,8 +188,9 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="Show Results" Command="{Binding ShowResultsCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
-            
+            <Button Grid.Column="0" Content="Show Results" Command="{Binding ShowResultsCommand}" 
+            HorizontalAlignment="Left" Margin="0,10,0,0"/>
+
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                 <Button Content="Save" Command="{Binding SaveCommand}" Style="{DynamicResource Esri_ButtonSuccess}" Margin="5,0" Width="80"/>
                 <Button Content="Skip" Command="{Binding SkipCommand}" Margin="5,0" Width="80"/>
