@@ -45,8 +45,7 @@ namespace IC_Loader_Pro
             // 1. Update stats and disable UI buttons.
             IsEmailActionEnabled = false;
             StatusMessage = "Finalizing and saving to database...";
-            SelectedIcType.PassedCount++;
-
+            
             try
             {
                 outlookApp = new Outlook.Application();
@@ -81,7 +80,7 @@ namespace IC_Loader_Pro
                     "An error occurred while saving the submission. Please check the logs.",
                     "Save Error");
                 // If save fails, roll back the "Passed" count.
-                SelectedIcType.PassedCount--;
+                //SelectedIcType.PassedCount--;
             }
             finally
             {
@@ -92,6 +91,8 @@ namespace IC_Loader_Pro
                     outlookApp = null;
                 }
             }
+
+            SelectedIcType.PassedCount++;
 
             // 4. Advance to the next email.
             if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
@@ -127,7 +128,8 @@ namespace IC_Loader_Pro
             // skipTestResult.RecordResults();
 
             // 2. Update the queue statistics.
-            UpdateQueueStats(skipTestResult);
+            // UpdateQueueStats(skipTestResult);
+            SelectedIcType.SkippedCount++;
 
             // 3. Advance to the next email.
             if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())

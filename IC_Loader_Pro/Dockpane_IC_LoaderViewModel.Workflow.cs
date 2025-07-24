@@ -238,7 +238,7 @@ namespace IC_Loader_Pro
                 EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType);
 
                 _currentEmailTestResult = processingResult.TestResult;
-                UpdateQueueStats(_currentEmailTestResult);
+               // UpdateQueueStats(_currentEmailTestResult);
 
                 if (!_currentEmailTestResult.Passed)
                 {
@@ -284,6 +284,7 @@ namespace IC_Loader_Pro
                 // The application only advances if it was explicitly marked for auto-advancement.
                 if (shouldAutoAdvance)
                 {
+                    SelectedIcType.FailedCount++;
                     if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
                     {
                         emailsToProcess.RemoveAt(0);
