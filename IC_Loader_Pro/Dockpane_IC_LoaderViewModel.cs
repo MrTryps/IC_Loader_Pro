@@ -42,6 +42,11 @@ namespace IC_Loader_Pro
         private readonly ObservableCollection<FileSetViewModel> _foundFileSets = new ObservableCollection<FileSetViewModel>();
         public ReadOnlyObservableCollection<FileSetViewModel> _readOnlyFoundFileSets { get; }
 
+        private readonly ObservableCollection<ShapeItem> _shapesToReview = new ObservableCollection<ShapeItem>();
+        private readonly ObservableCollection<ShapeItem> _selectedShapes = new ObservableCollection<ShapeItem>();
+        public ReadOnlyObservableCollection<ShapeItem> _readOnlyShapesToReview { get; }
+        public ReadOnlyObservableCollection<ShapeItem> _readOnlySelectedShapes { get; }
+
 
         private ICQueueSummary _selectedQueue;
         private bool _isInitialized = false;
@@ -103,9 +108,14 @@ namespace IC_Loader_Pro
             // Create the public, read-only collection that the UI will bind to
             _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
             _readOnlyFoundFileSets = new ReadOnlyObservableCollection<FileSetViewModel>(_foundFileSets);
+          //  _readOnlyShapesToReview = new ReadOnlyObservableCollection<ShapeItem>(_shapesToReview);
+            _readOnlySelectedShapes = new ReadOnlyObservableCollection<ShapeItem>(_selectedShapes);
+
 
             // This is a key step from the sample. It allows a background thread to safely update a collection that the UI is bound to.
             BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
+            BindingOperations.EnableCollectionSynchronization(_readOnlyShapesToReview, _lock);
+            BindingOperations.EnableCollectionSynchronization(_readOnlySelectedShapes, _lock);
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => IsUIEnabled);

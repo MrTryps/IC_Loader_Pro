@@ -1,5 +1,6 @@
 ﻿using IC_Loader_Pro.Models;
 using IC_Rules_2025;
+using System.Collections.Generic;
 
 namespace IC_Loader_Pro.Models
 {
@@ -10,5 +11,6 @@ namespace IC_Loader_Pro.Models
     {
         public IcTestResult TestResult { get; set; }
         public AttachmentAnalysisResult AttachmentAnalysis { get; set; }
+        public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();
     }
 }

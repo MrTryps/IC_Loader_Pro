@@ -137,6 +137,7 @@
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="ToolTip" Value="{Binding ExtensionsTooltip}"/>
                         <Style.Triggers>
                             <Trigger Property="ItemsControl.AlternationIndex" Value="1">
                                 <Setter Property="Background" Value="{DynamicResource Esri_Gray10Brush}"/>

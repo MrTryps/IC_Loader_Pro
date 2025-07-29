@@ -51,7 +51,7 @@ namespace IC_Loader_Pro.Services
         {
             if (string.IsNullOrWhiteSpace(fullFolderPath) || !fullFolderPath.StartsWith("\\\\"))
             {
-                throw new ArgumentException("Invalid folder path format. Path must start with '\\\\'.", nameof(fullFolderPath));
+                throw new ArgumentException("Invalid folder path format. path must start with '\\\\'.", nameof(fullFolderPath));
             }
 
             var results = new List<EmailItem>();
@@ -126,7 +126,7 @@ namespace IC_Loader_Pro.Services
             var parts = fullPath.TrimStart('\\').Split(new[] { '\\' }, 2);
             if (parts.Length < 2)
             {
-                throw new ArgumentException("Path must include at least a store name and a folder name.", nameof(fullPath));
+                throw new ArgumentException("path must include at least a store name and a folder name.", nameof(fullPath));
             }
             return (parts[0], parts[1]);
         }

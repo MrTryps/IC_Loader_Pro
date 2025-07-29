@@ -1,48 +1,41 @@
 ﻿using ArcGIS.Core.Geometry; // Required for Polygon
 using ArcGIS.Desktop.Framework.Contracts;
+using System.Collections.Generic;
 
 namespace IC_Loader_Pro.Models
 {
     public class ShapeItem : PropertyChangedBase
     {
-        private Polygon _geometry;
-        /// <summary>
-        /// The actual polygon geometry of the shape.
-        /// </summary>
-        public Polygon Geometry
+        // --- Properties for UI state ---
+        private bool _isShownInMap = true;
+        public bool IsShownInMap
         {
-            get => _geometry;
-            set => SetProperty(ref _geometry, value);
+            get => _isShownInMap;
+            set => SetProperty(ref _isShownInMap, value);
         }
 
-        private string _sourceFile;
-        /// <summary>
-        /// The name of the original file this shape came from (e.g., "attachment1.shp").
-        /// </summary>
-        public string SourceFile
+        private bool _isSelectedForUse = false;
+        public bool IsSelectedForUse
         {
-            get => _sourceFile;
-            set => SetProperty(ref _sourceFile, value);
+            get => _isSelectedForUse;
+            set => SetProperty(ref _isSelectedForUse, value);
         }
 
-        private bool _isValid;
-        /// <summary>
-        /// A flag indicating if the shape passed our validation rules (is a polygon, has area, etc.).
-        /// </summary>
-        public bool IsValid
-        {
-            get => _isValid;
-            set => SetProperty(ref _isValid, value);
-        }
+        // --- Core Shape Properties ---
+        public int ShapeReferenceId { get; set; } // The original OBJECTID
+        public Polygon Geometry { get; set; }
+        public string SourceFile { get; set; }
+        public string ShapeType { get; set; } // e.g., "Polygon", "Polyline"
+        public double Area { get; set; }
 
-        private string _validationMessage = "OK";
+        // --- Validation Properties ---
+        public bool IsValid { get; set; }
+        public string Status { get; set; } // e.g., "OK", "Self-Intersecting"
+
         /// <summary>
-        /// A message explaining why a shape is not valid.
+        /// A dictionary to store the attribute values for the fields defined
+        /// in the IC_Rules (the "fields to mine").
         /// </summary>
-        public string ValidationMessage
-        {
-            get => _validationMessage;
-            set => SetProperty(ref _validationMessage, value);
-        }
+        public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
 }

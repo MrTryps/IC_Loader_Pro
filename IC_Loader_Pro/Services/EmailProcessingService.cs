@@ -120,7 +120,7 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
-            // 4. Handle No GIS Files Found
+            //  Handle No GIS Files Found
             if (!attachmentAnalysis.IdentifiedFileSets.Any())
             {
                 rootTestResult.Passed = false;
@@ -129,12 +129,17 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
+            var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
+            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType);
+            _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);            
+
             await Task.CompletedTask;
 
             return new EmailProcessingResult
             {
                 TestResult = rootTestResult,
-                AttachmentAnalysis = attachmentAnalysis
+                AttachmentAnalysis = attachmentAnalysis,
+                ShapeItems = foundShapes
             };
         }
 

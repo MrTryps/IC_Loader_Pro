@@ -13,7 +13,7 @@ namespace IC_Loader_Pro.Models
         /// <summary>
         /// A list of logical filesets (e.g., shapefiles) identified from the attachments.
         /// </summary>
-        public List<Fileset> IdentifiedFileSets { get; set; } = new List<Fileset>();
+        public List<fileset> IdentifiedFileSets { get; set; } = new List<fileset>();
 
         /// <summary>
         /// A list of every individual file found after extraction.

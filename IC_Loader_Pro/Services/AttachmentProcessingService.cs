@@ -149,63 +149,6 @@ namespace IC_Loader_Pro.Services
 
             return analysisResult;
         }
-
-
-
-
-
-
-
-        /// <summary>
-        /// Analyzes a folder of attachments to identify GIS datasets.
-        /// Replicates the logic of the legacy returnGisFilesFromFolder function.
-        /// </summary>
-        /// <param name="folderToSearch">The directory containing the saved attachments.</param>
-        /// <param name="icType">The IC Type being processed, used to determine fileset rules.</param>
-        /// <returns>An object containing the results of the analysis.</returns>
-        public AttachmentAnalysisResult AnalyzeAttachments_old(string folderToSearch, string icType)
-        {
-            const string methodName = "AnalyzeAttachments";
-
-            var analysisResult = new AttachmentAnalysisResult
-            {
-                // Create a root test result for this phase of the operation
-                TestResult = _namedTests.returnNewTestResult("GIS_Attachments_Tests_Passed", "", IcTestResult.TestType.Deliverable)
-            };        
-
-            try
-            {
-                // Step 1: Unzip any archive files in the folder.
-                // NOTE: This assumes a 'BisUnzipService' or similar tool exists.
-                // var unzipService = new BisUnzipService(_log);
-                // var unzippedFiles = unzipService.UnzipAllInFolder(folderToSearch);
-                _log.RecordMessage("Placeholder: Unzipping files...", BisLogMessageType.Note);
-
-                // Step 2: Use the IC_Rules engine to identify logical file sets.
-                analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
-
-                // Step 3: Create a list of all individual files found.
-                var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch); // Search recursively
-                foreach (string filePath in allFilesFound)
-                {
-                    analysisResult.AllFiles.Add(new AnalyzedFile
-                    {
-                        FileName = Path.GetFileName(filePath),
-                        CurrentPath = Path.GetDirectoryName(filePath),
-                        // The logic for determining OriginalPath from the unzipped file list
-                        // would need to be re-implemented here.
-                        OriginalPath = ""
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError("An error occurred during attachment analysis.", ex, methodName);
-                analysisResult.TestResult.Passed = false;
-                analysisResult.TestResult.Comments.Add($"Error during attachment analysis: {ex.Message}");
-            }
-
-            return analysisResult;
-        }
+               
     }
 }

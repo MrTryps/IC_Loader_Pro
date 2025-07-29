@@ -196,7 +196,7 @@ namespace IC_Loader_Pro
             var currentEmailSummary = emailsToProcess.First();
             EmailItem emailToProcess = null;
            
-            // NEW CHANGE: This flag is now the master controller for advancing the queue.
+            // This flag is the master controller for advancing the queue.
             bool shouldAutoAdvance = false;
 
             try
@@ -258,6 +258,19 @@ namespace IC_Loader_Pro
                             _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
                         }
                     });
+
+                if (processingResult.ShapeItems?.Any() == true)
+                {
+                    await RunOnUIThread(() =>
+                    {
+                        _shapesToReview.Clear();
+                        foreach (var shape in processingResult.ShapeItems)
+                        {
+                            _shapesToReview.Add(shape);
+                        }
+                    });
+                }
+
                 }
                 StatusMessage = "Ready for review.";
                 IsEmailActionEnabled = true;
