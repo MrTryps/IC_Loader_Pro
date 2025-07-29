@@ -2,6 +2,7 @@
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
 using IC_Rules_2025;
 using System;
@@ -29,6 +30,12 @@ namespace IC_Loader_Pro
         public ICommand OptionsCommand { get; private set; }
         public ICommand RefreshQueuesCommand { get; private set; }
         public ICommand ShowResultsCommand { get; private set; }
+        public ICommand AddSelectedShapeCommand { get; private set; }
+        public ICommand RemoveSelectedShapeCommand { get; private set; }
+        public ICommand AddAllShapesCommand { get; private set; }
+        public ICommand RemoveAllShapesCommand { get; private set; }
+        public ICommand ClearSelectionCommand { get; private set; }
+
         #endregion
 
         #region Command Methods
@@ -256,5 +263,50 @@ namespace IC_Loader_Pro
         }
 
         #endregion
+
+        #region Shape Manipulation Commands
+
+        private void AddSelectedShape()
+        {
+            if (SelectedShapesForReview != null)
+            {
+                var itemsToMove = SelectedShapesForReview.OfType<ShapeItem>().ToList();
+                // Use RunOnUIThread to ensure collection changes are safe
+                RunOnUIThread(() =>
+                {
+                    foreach (var item in itemsToMove)
+                    {
+                        _selectedShapes.Add(item);
+                        _shapesToReview.Remove(item);
+                    }
+                    SelectedShapesForReview.Clear();
+                });
+            }
+        }
+
+        private void RemoveSelectedShape()
+        {
+            if (SelectedShapesToUse != null)
+            {
+                var itemsToMove = SelectedShapesToUse.OfType<ShapeItem>().ToList();
+                RunOnUIThread(() =>
+                {
+                    foreach (var item in itemsToMove)
+                    {
+                        _shapesToReview.Add(item);
+                        _selectedShapes.Remove(item);
+                    }
+                    SelectedShapesToUse.Clear();
+                });
+            }
+        }
+
+        // These methods will be implemented later
+        private void AddAllShapes() { /* ... */ }
+        private void RemoveAllShapes() { /* ... */ }
+
+        #endregion
+
+
     }
 }

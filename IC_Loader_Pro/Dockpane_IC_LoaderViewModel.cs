@@ -44,8 +44,8 @@ namespace IC_Loader_Pro
 
         private readonly ObservableCollection<ShapeItem> _shapesToReview = new ObservableCollection<ShapeItem>();
         private readonly ObservableCollection<ShapeItem> _selectedShapes = new ObservableCollection<ShapeItem>();
-        public ReadOnlyObservableCollection<ShapeItem> _readOnlyShapesToReview { get; }
-        public ReadOnlyObservableCollection<ShapeItem> _readOnlySelectedShapes { get; }
+        public ReadOnlyObservableCollection<ShapeItem> ShapesToReview { get; }
+        public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
 
         private ICQueueSummary _selectedQueue;
@@ -108,14 +108,16 @@ namespace IC_Loader_Pro
             // Create the public, read-only collection that the UI will bind to
             _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
             _readOnlyFoundFileSets = new ReadOnlyObservableCollection<FileSetViewModel>(_foundFileSets);
-          //  _readOnlyShapesToReview = new ReadOnlyObservableCollection<ShapeItem>(_shapesToReview);
-            _readOnlySelectedShapes = new ReadOnlyObservableCollection<ShapeItem>(_selectedShapes);
+            ShapesToReview = new ReadOnlyObservableCollection<ShapeItem>(_shapesToReview);
+            SelectedShapes = new ReadOnlyObservableCollection<ShapeItem>(_selectedShapes);
+            SelectedShapesForReview.CollectionChanged += SelectedShapesForReview_CollectionChanged;
+            SelectedShapesToUse.CollectionChanged += SelectedShapesToUse_CollectionChanged;
 
 
-            // This is a key step from the sample. It allows a background thread to safely update a collection that the UI is bound to.
+            // This is a key step. It allows a background thread to safely update a collection that the UI is bound to.
             BindingOperations.EnableCollectionSynchronization(_readOnlyListOfQueues, _lockQueueCollection);
-            BindingOperations.EnableCollectionSynchronization(_readOnlyShapesToReview, _lock);
-            BindingOperations.EnableCollectionSynchronization(_readOnlySelectedShapes, _lock);
+            BindingOperations.EnableCollectionSynchronization(ShapesToReview, _lock);
+            BindingOperations.EnableCollectionSynchronization(SelectedShapes, _lock);
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => IsUIEnabled);
@@ -127,6 +129,10 @@ namespace IC_Loader_Pro
             ToolsCommand = new RelayCommand(async () => await OnTools(), () => IsUIEnabled);
             OptionsCommand = new RelayCommand(async () => await OnOptions(), () => IsUIEnabled);
             ShowResultsCommand = new RelayCommand(OnShowResults, () => _currentEmailTestResult != null);
+            AddSelectedShapeCommand = new RelayCommand(AddSelectedShape, () => SelectedShapesForReview.Any());// The button is enabled only if SelectedShapeForReview is not null
+            RemoveSelectedShapeCommand = new RelayCommand(RemoveSelectedShape, () => SelectedShapesToUse.Any()); // The button is enabled only if SelectedShapeToUse is not null
+            AddAllShapesCommand = new RelayCommand(OnAddAllShapes, () => _shapesToReview.Any());
+            RemoveAllShapesCommand = new RelayCommand(OnRemoveAllShapes, () => _selectedShapes.Any());
         }
         #endregion
      
@@ -167,6 +173,41 @@ namespace IC_Loader_Pro
                 // When a queue is selected, we can trigger logic here later
             }
         }
+
+        private void SelectedShapesForReview_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            // When the selection changes, tell the command to re-evaluate its state.
+            (AddSelectedShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+
+        private void SelectedShapesToUse_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            (RemoveSelectedShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+
+        //private ShapeItem _selectedShapeForReview;
+        //public ShapeItem SelectedShapeForReview
+        //{
+        //    get => _selectedShapeForReview;
+        //    set => SetProperty(ref _selectedShapeForReview, value);
+        //}
+
+        //private ShapeItem _selectedShapeToUse;
+        //public ShapeItem SelectedShapeToUse
+        //{
+        //    get => _selectedShapeToUse;
+        //    set => SetProperty(ref _selectedShapeToUse, value);
+        //}
+
+        /// <summary>
+        /// A collection of the shapes currently selected in the "Shapes to Review" list.
+        /// </summary>
+        public ObservableCollection<object> SelectedShapesForReview { get; } = new ObservableCollection<object>();
+
+        /// <summary>
+        /// A collection of the shapes currently selected in the "Selected Shapes to Use" list.
+        /// </summary>
+        public ObservableCollection<object> SelectedShapesToUse { get; } = new ObservableCollection<object>();
 
         #endregion
 
@@ -216,6 +257,49 @@ namespace IC_Loader_Pro
                 _isInitialized = true;
             }
         }
+
+        private void OnAddAllShapes()
+        {
+            RunOnUIThread(() =>
+            {
+                // To avoid modifying the collection while looping, create a temporary copy.
+                var itemsToMove = _shapesToReview.ToList();
+                foreach (var item in itemsToMove)
+                {
+                    _selectedShapes.Add(item);
+                    _shapesToReview.Remove(item);
+                }
+            });
+        }
+
+        private void OnRemoveAllShapes()
+        {
+            RunOnUIThread(() =>
+            {
+                var itemsToMove = _selectedShapes.ToList();
+                foreach (var item in itemsToMove)
+                {
+                    _shapesToReview.Add(item);
+                    _selectedShapes.Remove(item);
+                }
+            });
+        }
+
+        private void OnClearSelection()
+        {
+            // This simply clears the collections that are bound to the
+            // DataGrid's SelectedItems property, it doesn't move any items.
+            RunOnUIThread(() =>
+            {
+                SelectedShapesForReview.Clear();
+                SelectedShapesToUse.Clear();
+            });
+        }
+
+
+
+
+
 
         /// <summary>
         /// The static method used by the button to show the dockpane.

@@ -21,10 +21,12 @@ namespace IC_Loader_Pro
     /// </summary>
     public partial class Dockpane_IC_LoaderView : UserControl
     {
+        private Dockpane_IC_LoaderViewModel ViewModel => DataContext as Dockpane_IC_LoaderViewModel;
+
         public Dockpane_IC_LoaderView()
         {
             InitializeComponent();
-        }
+        }      
     }
 }
 //System.Windows.Markup.XamlParseException: ''Provide value on 'System.Windows.Baml2006.TypeConverterMarkupExtension' threw an exception.' Line number '47' and line position '43'.'
