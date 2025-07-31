@@ -12,6 +12,7 @@ using IC_Loader_Pro.Models; // Your ICQueueSummary class
 using IC_Loader_Pro.ViewModels;
 using IC_Rules_2025;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -133,6 +134,9 @@ namespace IC_Loader_Pro
             RemoveSelectedShapeCommand = new RelayCommand(RemoveSelectedShape, () => SelectedShapesToUse.Any()); // The button is enabled only if SelectedShapeToUse is not null
             AddAllShapesCommand = new RelayCommand(OnAddAllShapes, () => _shapesToReview.Any());
             RemoveAllShapesCommand = new RelayCommand(OnRemoveAllShapes, () => _selectedShapes.Any());
+            ZoomToAllCommand = new RelayCommand(async () => await OnZoomToAllAsync(),() => _shapesToReview.Any() || _selectedShapes.Any());
+            ZoomToSelectedReviewShapeCommand = new RelayCommand(async () => await OnZoomToSelectedReviewShape(), () => SelectedShapesForReview.Any());
+            ZoomToSelectedUseShapeCommand = new RelayCommand(async () => await OnZoomToSelectedUseShape(), () => SelectedShapesToUse.Any());
         }
         #endregion
      
@@ -258,9 +262,9 @@ namespace IC_Loader_Pro
             }
         }
 
-        private void OnAddAllShapes()
+        private async Task OnAddAllShapes()
         {
-            RunOnUIThread(() =>
+            await RunOnUIThread(() =>
             {
                 // To avoid modifying the collection while looping, create a temporary copy.
                 var itemsToMove = _shapesToReview.ToList();
@@ -270,11 +274,14 @@ namespace IC_Loader_Pro
                     _shapesToReview.Remove(item);
                 }
             });
+
+            // After moving the items, redraw the map to update their symbols.
+            await RedrawAllShapesOnMapAsync();
         }
 
-        private void OnRemoveAllShapes()
+        private async Task OnRemoveAllShapes()
         {
-            RunOnUIThread(() =>
+            await RunOnUIThread(() =>
             {
                 var itemsToMove = _selectedShapes.ToList();
                 foreach (var item in itemsToMove)
@@ -283,6 +290,9 @@ namespace IC_Loader_Pro
                     _selectedShapes.Remove(item);
                 }
             });
+
+            // After moving the items, redraw the map to update their symbols.
+            await RedrawAllShapesOnMapAsync();
         }
 
         private void OnClearSelection()
@@ -296,7 +306,51 @@ namespace IC_Loader_Pro
             });
         }
 
+        private async Task OnZoomToAllAsync()
+        {
+            // Combine the shapes from both lists into a single collection of geometries.
+            var allGeometries = _shapesToReview.Select(s => s.Geometry)
+                                               .Concat(_selectedShapes.Select(s => s.Geometry));
 
+            await ZoomToGeometryAsync(allGeometries);
+        }
+
+
+
+        /// <summary>
+        /// Zooms the active map view to the full extent of a collection of geometries.
+        /// </summary>
+        /// <param name="geometriesToZoomTo">A collection of Geometry objects to include in the extent.</param>
+        private async Task ZoomToGeometryAsync(IEnumerable<Geometry> geometriesToZoomTo)
+        {           
+            // All map interactions must be run on the ArcGIS Pro main thread.
+            // Filter out any null geometries
+            var validGeometries = geometriesToZoomTo.Where(g => g != null && !g.IsEmpty).ToList();
+            if (!validGeometries.Any()) return;
+
+            await QueuedTask.Run(() =>
+            {
+                var mapView = MapView.Active;
+                if (mapView == null) return;
+
+                // --- THIS IS THE CORRECT METHOD ---
+                // 1. Create a new EnvelopeBuilder, starting with the extent of the first geometry.
+                var envelopeBuilder = new EnvelopeBuilderEx(validGeometries.First().Extent);
+
+                // 2. Loop through the rest of the geometries and combine their extents.
+                foreach (var geom in validGeometries.Skip(1))
+                {
+                    envelopeBuilder.Union(geom.Extent);
+                }
+
+                // 3. Get the final, combined envelope from the builder.
+                var fullExtent = envelopeBuilder.ToGeometry();
+                // ------------------------------------
+
+                // Zoom to the combined extent with a small buffer (10% larger).
+                mapView.ZoomTo(fullExtent.Expand(1.1, 1.1, true), TimeSpan.FromSeconds(0.5));
+            });
+        }
 
 
 

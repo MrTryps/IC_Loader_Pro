@@ -71,6 +71,7 @@ namespace IC_Loader_Pro
                 }
 
                 await EnsureManualAddLayerExistsAsync(activeMap);
+                await EnsureGraphicsLayerExistsAsync(activeMap);
 
                 Log.RecordMessage("Refreshing IC Queues...", BisLogMessageType.Note);
                 await RefreshICQueuesAsync();
@@ -218,6 +219,34 @@ namespace IC_Loader_Pro
                 if (_manualAddLayer == null) { Log.RecordError($"Could not create or find the '{layerName}' layer after all checks.", null, nameof(EnsureManualAddLayerExistsAsync)); }
             });
         }
+        /// <summary>
+        /// Ensures a dedicated graphics layer for displaying IC shapes exists on the map.
+        /// </summary>
+        private Task EnsureGraphicsLayerExistsAsync(Map map)
+        {
+            const string layerName = "IC Loader Shapes";
+
+            return QueuedTask.Run(() =>
+            {
+                // Check if the layer already exists
+                var existingLayer = map.FindLayers(layerName).FirstOrDefault();
+                if (existingLayer != null)
+                {
+                    Log.RecordMessage($"Graphics layer '{layerName}' already exists.", BisLogMessageType.Note);
+                    return;
+                }
+
+                // If not, create it and add it to the top of the map
+                Log.RecordMessage($"Creating new graphics layer: '{layerName}'", BisLogMessageType.Note);
+                GraphicsLayerCreationParams graphicsLayerCreationParams = new GraphicsLayerCreationParams
+                {
+                    Name = layerName
+                };
+                GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
+            });
+        }
+
+
         #endregion
     }
 }

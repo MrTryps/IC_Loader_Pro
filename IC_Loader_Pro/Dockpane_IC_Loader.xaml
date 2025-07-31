@@ -132,7 +132,7 @@
                       SelectionMode="Extended">
                         
                         <DataGrid.InputBindings>
-                            <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding AddSelectedShapeCommand}"/>
+                            <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding ZoomToSelectedReviewShapeCommand}"/>
                         </DataGrid.InputBindings>
 
                         <DataGrid.Columns>
@@ -190,7 +190,7 @@
                   SelectionMode="Extended">
 
                     <DataGrid.InputBindings>
-                        <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding RemoveSelectedShapeCommand}"/>
+                        <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding ZoomToSelectedUseShapeCommand}"/>
                     </DataGrid.InputBindings>
 
                     <DataGrid.Columns>

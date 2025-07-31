@@ -1,6 +1,10 @@
-﻿using ArcGIS.Desktop.Framework;
+﻿using ArcGIS.Core.CIM;
+using ArcGIS.Desktop.Core;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
 using BIS_Tools_DataModels_2025;
+using IC_Loader_Pro.Helpers;
 using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
 using IC_Rules_2025;
@@ -11,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Exception = System.Exception;
@@ -269,7 +274,8 @@ namespace IC_Loader_Pro
                             _shapesToReview.Add(shape);
                         }
                     });
-                }
+                    await RedrawAllShapesOnMapAsync();
+                    }
 
                 }
                 StatusMessage = "Ready for review.";
@@ -397,6 +403,50 @@ namespace IC_Loader_Pro
                     Log.RecordError($"Failed to delete temp folder: {email.TempFolderPath}", ex, "CleanupTempFolder");
                 }
             }
+        }
+        /// <summary>
+        /// Clears all existing IC graphics and redraws the shapes from both the 'Review'
+        /// and 'Use' lists with the correct symbology loaded from the project style file.
+        /// </summary>
+        private async Task RedrawAllShapesOnMapAsync()
+        {
+            // 1. Ask the SymbolManager for the symbols we need.
+            var reviewSymbol = await SymbolManager.GetSymbolAsync<CIMPolygonSymbol>("ReviewShapeSymbol");
+            var useSymbol = await SymbolManager.GetSymbolAsync<CIMPolygonSymbol>("UseShapeSymbol");
+
+            if (reviewSymbol == null || useSymbol == null)
+            {
+                // The SymbolManager will have already logged the specific error.
+                return;
+            }
+
+            // 2. The rest of the method uses QueuedTask to draw the graphics.
+            await QueuedTask.Run(() =>
+            {
+                var mapView = MapView.Active;
+                if (mapView == null) return;
+
+                var graphicsLayer = mapView.Map.FindLayers("IC Loader Shapes").FirstOrDefault() as GraphicsLayer;
+                if (graphicsLayer == null) return;
+
+                graphicsLayer.RemoveElements();
+
+                foreach (var shapeItem in _shapesToReview)
+                {
+                    if (shapeItem.Geometry != null)
+                    {
+                        graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol);
+                    }
+                }
+
+                foreach (var shapeItem in _selectedShapes)
+                {
+                    if (shapeItem.Geometry != null)
+                    {
+                        graphicsLayer.AddElement(shapeItem.Geometry, useSymbol);
+                    }
+                }
+            });
         }
 
     }

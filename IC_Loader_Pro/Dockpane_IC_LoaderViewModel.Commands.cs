@@ -35,6 +35,9 @@ namespace IC_Loader_Pro
         public ICommand AddAllShapesCommand { get; private set; }
         public ICommand RemoveAllShapesCommand { get; private set; }
         public ICommand ClearSelectionCommand { get; private set; }
+        public ICommand ZoomToAllCommand { get; private set; }
+        public ICommand ZoomToSelectedReviewShapeCommand { get; private set; }
+        public ICommand ZoomToSelectedUseShapeCommand { get; private set; }
 
         #endregion
 
@@ -266,44 +269,57 @@ namespace IC_Loader_Pro
 
         #region Shape Manipulation Commands
 
-        private void AddSelectedShape()
+        private async Task AddSelectedShape()
         {
-            if (SelectedShapesForReview != null)
+            var itemsToMove = SelectedShapesForReview.OfType<ShapeItem>().ToList();
+            if (!itemsToMove.Any()) return;
+
+            await RunOnUIThread(() =>
             {
-                var itemsToMove = SelectedShapesForReview.OfType<ShapeItem>().ToList();
-                // Use RunOnUIThread to ensure collection changes are safe
-                RunOnUIThread(() =>
+                foreach (var item in itemsToMove)
                 {
-                    foreach (var item in itemsToMove)
-                    {
-                        _selectedShapes.Add(item);
-                        _shapesToReview.Remove(item);
-                    }
-                    SelectedShapesForReview.Clear();
-                });
-            }
+                    _selectedShapes.Add(item);
+                    _shapesToReview.Remove(item);
+                }
+            });
+            // After moving the items, redraw the map to update their symbols.
+            await RedrawAllShapesOnMapAsync();
         }
 
-        private void RemoveSelectedShape()
+        private async Task RemoveSelectedShape()
         {
-            if (SelectedShapesToUse != null)
+            var itemsToMove = SelectedShapesToUse.OfType<ShapeItem>().ToList();
+            if (!itemsToMove.Any()) return;
+
+            await RunOnUIThread(() =>
             {
-                var itemsToMove = SelectedShapesToUse.OfType<ShapeItem>().ToList();
-                RunOnUIThread(() =>
+                foreach (var item in itemsToMove)
                 {
-                    foreach (var item in itemsToMove)
-                    {
-                        _shapesToReview.Add(item);
-                        _selectedShapes.Remove(item);
-                    }
-                    SelectedShapesToUse.Clear();
-                });
-            }
+                    _shapesToReview.Add(item);
+                    _selectedShapes.Remove(item);
+                }
+            });
+            // After moving the items, redraw the map to update their symbols.
+            await RedrawAllShapesOnMapAsync();
         }
 
-        // These methods will be implemented later
-        private void AddAllShapes() { /* ... */ }
-        private void RemoveAllShapes() { /* ... */ }
+        private async Task OnZoomToSelectedReviewShape()
+        {
+            // Use LINQ to get a collection of geometries from the selected items in the "Review" list.
+            if (!SelectedShapesForReview.Any()) return;
+            var selectedGeometries = SelectedShapesForReview.OfType<ShapeItem>().Select(s => s.Geometry);
+            await ZoomToGeometryAsync(selectedGeometries);
+            await RedrawAllShapesOnMapAsync();
+        }
+
+        private async Task OnZoomToSelectedUseShape()
+        {
+            // Use LINQ to get a collection of geometries from the selected items in the "Use" list.
+            if (!SelectedShapesToUse.Any()) return;
+            var selectedGeometries = SelectedShapesToUse.OfType<ShapeItem>().Select(s => s.Geometry);
+            await ZoomToGeometryAsync(selectedGeometries);
+            await RedrawAllShapesOnMapAsync();
+        }     
 
         #endregion
 
