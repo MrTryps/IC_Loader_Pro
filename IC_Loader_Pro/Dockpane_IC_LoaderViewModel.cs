@@ -48,6 +48,7 @@ namespace IC_Loader_Pro
         public ReadOnlyObservableCollection<ShapeItem> ShapesToReview { get; }
         public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
+        private MapPoint _currentSiteLocation;
 
         private ICQueueSummary _selectedQueue;
         private bool _isInitialized = false;
@@ -137,6 +138,7 @@ namespace IC_Loader_Pro
             ZoomToAllCommand = new RelayCommand(async () => await OnZoomToAllAsync(),() => _shapesToReview.Any() || _selectedShapes.Any());
             ZoomToSelectedReviewShapeCommand = new RelayCommand(async () => await OnZoomToSelectedReviewShape(), () => SelectedShapesForReview.Any());
             ZoomToSelectedUseShapeCommand = new RelayCommand(async () => await OnZoomToSelectedUseShape(), () => SelectedShapesToUse.Any());
+            ZoomToSiteCommand = new RelayCommand(async () => await OnZoomToSiteAsync(),() => _currentSiteLocation != null);
         }
         #endregion
      
@@ -306,13 +308,33 @@ namespace IC_Loader_Pro
             });
         }
 
+        /// <summary>
+        /// Gathers all geometries from the review list, the selected list, and the site point,
+        /// and then zooms the map to their combined extent.
+        /// </summary>
+        private async Task ZoomToAllAndSiteAsync()
+        {
+            // 1. Create a list to hold all the geometries we want to zoom to.
+            var geometriesToZoom = new List<Geometry>();
+
+            // 2. Add all the polygons from both the "Review" and "Use" lists.
+            geometriesToZoom.AddRange(_shapesToReview.Select(s => s.Geometry));
+            geometriesToZoom.AddRange(_selectedShapes.Select(s => s.Geometry));
+
+            // 3. If a site location has been found, add it to the list as well.
+            if (_currentSiteLocation != null)
+            {
+                geometriesToZoom.Add(_currentSiteLocation);
+            }
+
+            // 4. Call our existing generic zoom helper with the complete list.
+            await ZoomToGeometryAsync(geometriesToZoom);
+        }
+
+
         private async Task OnZoomToAllAsync()
         {
-            // Combine the shapes from both lists into a single collection of geometries.
-            var allGeometries = _shapesToReview.Select(s => s.Geometry)
-                                               .Concat(_selectedShapes.Select(s => s.Geometry));
-
-            await ZoomToGeometryAsync(allGeometries);
+            await ZoomToAllAndSiteAsync();
         }
 
 

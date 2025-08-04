@@ -1,4 +1,6 @@
 ﻿using ArcGIS.Core.CIM;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Core.Internal.Geometry;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
@@ -11,6 +13,7 @@ using IC_Rules_2025;
 using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -239,8 +242,10 @@ namespace IC_Loader_Pro
 
                 UpdateEmailInfo(emailToProcess, classification, classification.WasManuallyClassified, finalEmailType);
 
+                _currentSiteLocation = await GetSiteCoordinatesAsync(CurrentPrefId);
+
                 var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType);
+                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesAsync);
 
                 _currentEmailTestResult = processingResult.TestResult;
                // UpdateQueueStats(_currentEmailTestResult);
@@ -275,6 +280,7 @@ namespace IC_Loader_Pro
                         }
                     });
                     await RedrawAllShapesOnMapAsync();
+                    await ZoomToAllAndSiteAsync();
                     }
 
                 }
@@ -413,8 +419,9 @@ namespace IC_Loader_Pro
             // 1. Ask the SymbolManager for the symbols we need.
             var reviewSymbol = await SymbolManager.GetSymbolAsync<CIMPolygonSymbol>("ReviewShapeSymbol");
             var useSymbol = await SymbolManager.GetSymbolAsync<CIMPolygonSymbol>("UseShapeSymbol");
+            var siteSymbol = await SymbolManager.GetSymbolAsync<CIMPointSymbol>("SiteLocationSymbol");
 
-            if (reviewSymbol == null || useSymbol == null)
+            if (reviewSymbol == null || useSymbol == null || siteSymbol == null)
             {
                 // The SymbolManager will have already logged the specific error.
                 return;
@@ -446,8 +453,47 @@ namespace IC_Loader_Pro
                         graphicsLayer.AddElement(shapeItem.Geometry, useSymbol);
                     }
                 }
+
+                if (_currentSiteLocation != null)
+                {
+                    graphicsLayer.AddElement(_currentSiteLocation, siteSymbol);
+                }
             });
         }
+
+        /// <summary>
+        /// (SHELL METHOD) Queries the database to get the coordinates for a given Preference ID.
+        /// </summary>
+        /// <param name="prefId">The Preference ID to search for.</param>
+        /// <returns>A MapPoint object representing the site's location, or null if not found.</returns>
+        private async Task<MapPoint> GetSiteCoordinatesAsync(string prefId)
+        {
+            if (string.IsNullOrWhiteSpace(prefId) || prefId.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            Log.RecordMessage($"Querying coordinates for Pref ID: {prefId}", BisLogMessageType.Note);
+            MapPoint siteLocation = null;
+
+            await QueuedTask.Run(() =>
+            {
+                var queryResult = (DataTable) Module1.PostGreTool.ExecuteNamedQuery("returnRecordedPrefId", new Dictionary<string, object> { { "@PrefID", prefId } });
+
+                // 2. Parse the X and Y coordinates from the query result.
+                if (queryResult != null && queryResult.Rows.Count > 0)
+                {
+                    double x = Convert.ToDouble(queryResult.Rows[0]["x_coord_spf"]);
+                    double y = Convert.ToDouble(queryResult.Rows[0]["y_coord_spf"]);
+                    var sr = SpatialReferenceBuilder.CreateSpatialReference(2260); 
+                    siteLocation = MapPointBuilder.CreateMapPoint(x, y, sr);
+                }
+            });
+
+            return siteLocation;
+        }
+
+
 
     }
 }

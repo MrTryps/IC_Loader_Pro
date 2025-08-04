@@ -1,4 +1,5 @@
-﻿using BIS_Tools_DataModels_2025;
+﻿using ArcGIS.Core.Geometry;
+using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System;
@@ -53,7 +54,8 @@ namespace IC_Loader_Pro.Services
        string sourceFolderPath,
        string sourceStoreName,
        bool wasManuallyClassified,
-       EmailType finalType)
+       EmailType finalType,
+       Func<string, Task<MapPoint>> getSiteCoordsTask)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
@@ -76,6 +78,9 @@ namespace IC_Loader_Pro.Services
             subjectLineTest.Passed = !string.IsNullOrWhiteSpace(emailToProcess.Subject);
             subjectLineTest.AddComment(subjectLineTest.Passed ? "Subject line is present." : "Original subject was empty.");
             rootTestResult.AddSubordinateTestResult(subjectLineTest);
+
+            var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, getSiteCoordsTask);
+            rootTestResult.AddSubordinateTestResult(prefIdTest);
 
             var outlookService = new OutlookService();
 
@@ -212,6 +217,120 @@ namespace IC_Loader_Pro.Services
                 sourceStoreName,
                 destFolder
             );
+        }
+
+        /// <summary>
+        /// Validates the Preference IDs found in the email classification, checking for both
+        /// validity and the existence of coordinates.
+        /// </summary>
+        /// <param name="classification">The result of the email classification.</param>
+        /// <param name="getSiteCoordsTask">A function that can be called to get the site coordinates.</param>
+        /// <returns>A tuple containing the detailed IcTestResult and the found MapPoint.</returns>
+        private async Task<(IcTestResult TestResult, MapPoint SiteLocation)> ValidatePrefIdAsync(
+            EmailClassificationResult classification,
+            Func<string, Task<MapPoint>> getSiteCoordsTask)
+        {
+            IcTestResult prefIdTestResult;
+            MapPoint foundLocation = null;
+
+            if (!classification.PrefIds.Any())
+            {
+                // Case 1: No PrefID was found in the subject line.
+                prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                prefIdTestResult.Passed = false;
+            }
+            else if (classification.PrefIds.Count > 1)
+            {
+                // Case 2: Multiple potential PrefIDs were found. We must find exactly one valid ID.
+                _log.RecordMessage($"Found multiple potential PrefIDs: {string.Join(", ", classification.PrefIds)}. Validating each...", BisLogMessageType.Note);
+
+                var validPrefIds = new List<string>();
+                foreach (var id in classification.PrefIds)
+                {
+                    if (await IsValidPrefIdInDbAsync(id))
+                    {
+                        validPrefIds.Add(id);
+                    }
+                }
+
+                if (validPrefIds.Count == 1)
+                {
+                    // Success! We found exactly one valid ID.
+                    string validId = validPrefIds.First();
+                    _log.RecordMessage($"Found a single valid PrefID ('{validId}') among the candidates.", BisLogMessageType.Note);
+
+                    // Now, we proceed with this single valid ID to check for coordinates.
+                    foundLocation = await getSiteCoordsTask(validId);
+                    if (foundLocation == null)
+                    {
+                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                        prefIdTestResult.Comments.Add($"PrefID '{validId}' is valid but has no coordinates in the database.");
+                        prefIdTestResult.Passed = false;
+                    }
+                    else
+                    {
+                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_ValidPrefIdFound", "", IcTestResult.TestType.Deliverable);
+                        prefIdTestResult.Comments.Add($"Found coordinates for single valid PrefID: {validId}");
+                        prefIdTestResult.Passed = true;
+                    }
+                }
+                else
+                {
+                    // Failure: We found zero or more than one valid ID. The submission is ambiguous.
+                    prefIdTestResult = _namedTests.returnNewTestResult("GIS_MultipleValidPrefIDsOnSubjectLine", "", IcTestResult.TestType.Deliverable);
+                    prefIdTestResult.Comments.Add(validPrefIds.Any() ?
+                        $"Found multiple valid PrefIDs ({string.Join(", ", validPrefIds)}), making the submission ambiguous." :
+                        "Found multiple potential IDs, but none were valid.");
+                    prefIdTestResult.Passed = false;
+                }
+            }
+            else
+            {
+                // Case 3: Exactly one PrefID was found.
+                string prefId = classification.PrefIds.First();
+
+                bool isIdValid = await IsValidPrefIdInDbAsync(prefId);
+
+                if (!isIdValid)
+                {
+                    // The PrefID itself is not a valid identifier in the database.
+                    prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                    prefIdTestResult.Comments.Add($"The identifier '{prefId}' is not a valid PrefID.");
+                    prefIdTestResult.Passed = false;
+                }
+                else
+                {
+                    // The ID is valid. NOW, check for coordinates.
+                    foundLocation = await getSiteCoordsTask(prefId);
+                    if (foundLocation == null)
+                    {
+                        // The PrefID is valid but has no matching coordinates.
+                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                        prefIdTestResult.Comments.Add($"PrefID '{prefId}' is valid but has no coordinates in the database.");
+                        prefIdTestResult.Passed = false;
+                    }
+                    else
+                    {
+                        // Success! A single, valid PrefID with coordinates was found.
+                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_ValidPrefIdFound", "", IcTestResult.TestType.Deliverable);
+                        prefIdTestResult.Comments.Add($"Found coordinates for PrefID: {prefId}");
+                        prefIdTestResult.Passed = true;
+                    }
+                }
+            }
+
+            return (prefIdTestResult, foundLocation);
+        }
+
+
+
+        /// <summary>
+        /// A helper that now calls the centralized validation method in the IC_Rules engine.
+        /// </summary>
+        private Task<bool> IsValidPrefIdInDbAsync(string prefId)
+        {
+            // The logic is now delegated to the rules engine.
+            return Task.Run(() => _rules.IsValidPrefId(prefId));
         }
     }
 }

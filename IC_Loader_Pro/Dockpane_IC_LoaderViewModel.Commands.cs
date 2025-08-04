@@ -1,4 +1,5 @@
-﻿using ArcGIS.Desktop.Framework;
+﻿using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using BIS_Tools_DataModels_2025;
@@ -38,6 +39,7 @@ namespace IC_Loader_Pro
         public ICommand ZoomToAllCommand { get; private set; }
         public ICommand ZoomToSelectedReviewShapeCommand { get; private set; }
         public ICommand ZoomToSelectedUseShapeCommand { get; private set; }
+        public ICommand ZoomToSiteCommand { get; private set; }
 
         #endregion
 
@@ -319,7 +321,16 @@ namespace IC_Loader_Pro
             var selectedGeometries = SelectedShapesToUse.OfType<ShapeItem>().Select(s => s.Geometry);
             await ZoomToGeometryAsync(selectedGeometries);
             await RedrawAllShapesOnMapAsync();
-        }     
+        }
+
+        private async Task OnZoomToSiteAsync()
+        {
+            if (_currentSiteLocation != null)
+            {
+                // Pass the site's geometry to our generic zoom helper.
+                await ZoomToGeometryAsync(new List<Geometry> { _currentSiteLocation });
+            }
+        }
 
         #endregion
 
