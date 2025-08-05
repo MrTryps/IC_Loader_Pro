@@ -124,6 +124,7 @@
                     </StackPanel>
 
                     <DataGrid helpers:DataGridSelectedItemsBehavior.SelectedItems="{Binding SelectedShapesForReview}"
+                      GotFocus="DataGrid_GotFocus"
                       ItemsSource="{Binding ShapesToReview}" 
                       SelectedItem="{Binding SelectedShapeForReview}"
                       AutoGenerateColumns="False" 
@@ -139,6 +140,7 @@
                             <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                             <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>
+                            <DataGridTextColumn Header="Dist. from Site" Binding="{Binding DistanceFromSite, StringFormat={}{0:F1} ft}" Width="Auto"/>
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -182,6 +184,7 @@
 
             <GroupBox Grid.Column="2" Header="Selected Shapes to Use" Margin="2,0,0,0">
                 <DataGrid helpers:DataGridSelectedItemsBehavior.SelectedItems="{Binding SelectedShapesToUse}"
+                  GotFocus="DataGrid_GotFocus"
                   ItemsSource="{Binding SelectedShapes}" 
                   SelectedItem="{Binding SelectedShapeToUse}"
                   AutoGenerateColumns="False" 
@@ -197,6 +200,7 @@
                         <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                         <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>
+                        <DataGridTextColumn Header="Dist. from Site" Binding="{Binding DistanceFromSite, StringFormat={}{0:F1} ft}" Width="Auto"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </GroupBox>

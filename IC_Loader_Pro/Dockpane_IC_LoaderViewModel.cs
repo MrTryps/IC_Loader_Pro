@@ -1,4 +1,5 @@
-﻿using ArcGIS.Core.Geometry;
+﻿using ArcGIS.Core.CIM;
+using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Core.Events;
 using ArcGIS.Desktop.Core.Geoprocessing;
@@ -63,6 +64,11 @@ namespace IC_Loader_Pro
             set => SetProperty(ref _currentEmailId, value);
         }
 
+        /// <summary>
+        /// Holds the settings for the currently selected IC Type.
+        /// </summary>
+        private IcGisTypeSetting _currentIcSetting;
+
         private IcTestResult _currentEmailTestResult;
         private AttachmentAnalysisResult _currentAttachmentAnalysis;
 
@@ -114,6 +120,8 @@ namespace IC_Loader_Pro
             SelectedShapes = new ReadOnlyObservableCollection<ShapeItem>(_selectedShapes);
             SelectedShapesForReview.CollectionChanged += SelectedShapesForReview_CollectionChanged;
             SelectedShapesToUse.CollectionChanged += SelectedShapesToUse_CollectionChanged;
+            SelectedShapesForReview.CollectionChanged += OnSelectionChanged;
+            SelectedShapesToUse.CollectionChanged += OnSelectionChanged;
 
 
             // This is a key step. It allows a background thread to safely update a collection that the UI is bound to.
@@ -139,6 +147,7 @@ namespace IC_Loader_Pro
             ZoomToSelectedReviewShapeCommand = new RelayCommand(async () => await OnZoomToSelectedReviewShape(), () => SelectedShapesForReview.Any());
             ZoomToSelectedUseShapeCommand = new RelayCommand(async () => await OnZoomToSelectedUseShape(), () => SelectedShapesToUse.Any());
             ZoomToSiteCommand = new RelayCommand(async () => await OnZoomToSiteAsync(),() => _currentSiteLocation != null);
+            ClearSelectionCommand = new RelayCommand(OnClearSelection,() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
         }
         #endregion
      
@@ -165,6 +174,16 @@ namespace IC_Loader_Pro
 
                 SetProperty(ref _selectedQueue, value);
 
+                if (value != null)
+                {
+                    _currentIcSetting = IcRules.ReturnIcGisTypeSettings(value.Name);
+                    _ = ProcessSelectedQueueAsync();
+                }
+                else
+                {
+                    _currentIcSetting = null;
+                }
+
                 // If the new selection is not null, kick off the processing.
                 // The underscore discards the returned Task, which is a standard
                 // way to call an async method from a synchronous property setter.
@@ -190,6 +209,23 @@ namespace IC_Loader_Pro
         {
             (RemoveSelectedShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
+
+        /// <summary>
+        /// This method is called whenever an item is added or removed from either of the
+        /// selection collections.
+        /// </summary>
+        private async void OnSelectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            // Update the map highlight and also re-evaluate the button commands.
+            await UpdateMapHighlightAsync();
+            (AddSelectedShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (RemoveSelectedShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (ZoomToSelectedReviewShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (ZoomToSelectedUseShapeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (ClearSelectionCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+
+
 
         //private ShapeItem _selectedShapeForReview;
         //public ShapeItem SelectedShapeForReview
@@ -255,7 +291,6 @@ namespace IC_Loader_Pro
             {
                 // A map view is now active and we haven't run our setup yet.
                 // This is the SAFE time to run your initialization.
-                IcGisTypeSetting icSetting = null;
                 _ = LoadAndInitializeAsync();
 
                 // Set the flag so we don't run this full initialization again
@@ -374,7 +409,46 @@ namespace IC_Loader_Pro
             });
         }
 
+        /// <summary>
+        /// Clears the highlight layer and draws the currently selected shapes with a highlight symbol.
+        /// </summary>
+        private async Task UpdateMapHighlightAsync()
+        {
+            await QueuedTask.Run(() =>
+            {
+                var mapView = MapView.Active;
+                if (mapView == null) return;
 
+                // Find our dedicated highlight layer
+                var highlightLayer = mapView.Map.FindLayers("IC Loader Highlight").FirstOrDefault() as GraphicsLayer;
+                if (highlightLayer == null) return;
+
+                // Clear all previous highlights
+                highlightLayer.RemoveElements();
+
+                // 1. Create the stroke (the outline) for the polygon symbol.
+                CIMStroke outline = SymbolFactory.Instance.ConstructStroke(
+                    ColorFactory.Instance.CreateRGBColor(255, 255, 0), // Yellow  color
+                    3.0, // 3-point width
+                    SimpleLineStyle.Solid);
+
+                // 2. Now, construct the polygon symbol using the fill color and the outline stroke.
+                CIMPolygonSymbol highlightSymbol = SymbolFactory.Instance.ConstructPolygonSymbol(ColorFactory.Instance.CreateRGBColor(255, 255, 0, 30), SimpleFillStyle.Solid,outline);               
+
+                // Get the geometries from BOTH selection lists
+                var selectedGeometries = SelectedShapesForReview.OfType<ShapeItem>().Select(s => s.Geometry)
+                                             .Concat(SelectedShapesToUse.OfType<ShapeItem>().Select(s => s.Geometry));
+
+                // Add each selected shape's geometry to the highlight layer
+                foreach (var geom in selectedGeometries)
+                {
+                    if (geom != null)
+                    {
+                        highlightLayer.AddElement(geom, highlightSymbol);
+                    }
+                }
+            });
+        }
 
 
         /// <summary>

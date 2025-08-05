@@ -135,7 +135,7 @@ namespace IC_Loader_Pro.Services
             }
 
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
-            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType);
+            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation);
             _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);            
 
             await Task.CompletedTask;

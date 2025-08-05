@@ -4,6 +4,7 @@ using ArcGIS.Core.Internal.Geometry;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Layouts;
 using ArcGIS.Desktop.Mapping;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Helpers;
@@ -14,8 +15,10 @@ using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -137,7 +140,7 @@ namespace IC_Loader_Pro
             foreach (string icType in rulesEngine.ReturnIcTypes())
             {
                 try
-                {
+                {                
                     IcGisTypeSetting icSetting = rulesEngine.ReturnIcGisTypeSettings(icType);
                     string outlookFolderPath = icSetting.OutlookInboxFolderPath;
                     string testSender = icSetting.TestSenderEmail;
@@ -209,9 +212,8 @@ namespace IC_Loader_Pro
 
             try
             {
-                outlookApp = new Outlook.Application();
-                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-                var (storeName, folderPath) = OutlookService.ParseOutlookPath(icSetting.OutlookInboxFolderPath);
+                outlookApp = new Outlook.Application();                
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
 
                 emailToProcess = await QueuedTask.Run(() => new OutlookService().GetEmailById(outlookApp, folderPath, currentEmailSummary.Emailid, storeName));
 
@@ -442,7 +444,20 @@ namespace IC_Loader_Pro
                 {
                     if (shapeItem.Geometry != null)
                     {
-                        graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol);
+                        // Create a dictionary to hold the attributes
+                        var attributes = new Dictionary<string, object>
+                        {
+                            { "ShapeRefID", shapeItem.ShapeReferenceId }
+                        };
+                        GraphicElement polyElm = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, reviewSymbol);
+
+                        var graphic = new CIMPolygonGraphic
+                        {
+                            Symbol = reviewSymbol.MakeSymbolReference(),
+                            Polygon = shapeItem.Geometry,
+                            Attributes = attributes
+                        };
+                        graphicsLayer.AddElement(graphic);
                     }
                 }
 
@@ -450,7 +465,22 @@ namespace IC_Loader_Pro
                 {
                     if (shapeItem.Geometry != null)
                     {
-                        graphicsLayer.AddElement(shapeItem.Geometry, useSymbol);
+                        // Create a dictionary to hold the attributes
+                        var attributes = new Dictionary<string, object>
+                        {
+                            { "ShapeRefID", shapeItem.ShapeReferenceId }
+                        };
+                        GraphicElement polyElm = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, useSymbol);
+
+                        var graphic = new CIMPolygonGraphic
+                        {
+                            Symbol = useSymbol.MakeSymbolReference(),
+                            Polygon = shapeItem.Geometry,
+                            Attributes = attributes
+                        };
+                        graphicsLayer.AddElement(graphic);
+
+                        //graphicsLayer.AddElement(shapeItem.Geometry, useSymbol);
                     }
                 }
 
@@ -485,7 +515,7 @@ namespace IC_Loader_Pro
                 {
                     double x = Convert.ToDouble(queryResult.Rows[0]["x_coord_spf"]);
                     double y = Convert.ToDouble(queryResult.Rows[0]["y_coord_spf"]);
-                    var sr = SpatialReferenceBuilder.CreateSpatialReference(2260); 
+                    var sr = SpatialReferenceBuilder.CreateSpatialReference(_currentIcSetting.GeometryRules.ProjectionId);
                     siteLocation = MapPointBuilder.CreateMapPoint(x, y, sr);
                 }
             });

@@ -1,13 +1,18 @@
-﻿using ArcGIS.Core.Geometry;
+﻿using ArcGIS.Core.CIM;
+using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Internal.Mapping.Ribbon;
+using ArcGIS.Desktop.Mapping;
+using ArcGIS.Desktop.Mapping.Events;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
 using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -15,7 +20,6 @@ using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
-
 
 namespace IC_Loader_Pro
 {
@@ -72,9 +76,8 @@ namespace IC_Loader_Pro
                 StatusMessage = "Successfully saved submission.";
 
                 // 3. Move the processed email.
-                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
                 var outlookService = new OutlookService();
-                string fullOutlookPath = icSetting.OutlookInboxFolderPath;
+                string fullOutlookPath = _currentIcSetting.OutlookInboxFolderPath;
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 
                 outlookService.MoveEmailToFolder(
@@ -82,7 +85,7 @@ namespace IC_Loader_Pro
                     CurrentEmailId,
                     folderPath,
                     storeName,
-                    icSetting.OutlookProcessedFolderPath
+                    _currentIcSetting.OutlookProcessedFolderPath
                 );
             }
             catch (Exception ex)
@@ -184,14 +187,13 @@ namespace IC_Loader_Pro
                 var processingService = new EmailProcessingService(IcRules, namedTests, Log);
 
                 // Get the source folder info needed to move the email.
-                var icSetting = IcRules.ReturnIcGisTypeSettings(SelectedIcType.Name);
-                string fullOutlookPath = icSetting.OutlookInboxFolderPath;
+                string fullOutlookPath = _currentIcSetting.OutlookInboxFolderPath;
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
 
                 // This call is now much cleaner and delegates the work.
                 // It needs to run on a background thread to avoid freezing the UI.
                 await QueuedTask.Run(() =>
-                    processingService.HandleRejection(outlookApp,rejectionTestResult, icSetting, folderPath, storeName)
+                    processingService.HandleRejection(outlookApp,rejectionTestResult, _currentIcSetting, folderPath, storeName)
                 );
             }
             catch (Exception ex)
@@ -265,6 +267,83 @@ namespace IC_Loader_Pro
                 Owner = FrameworkApplication.Current.MainWindow
             };
             testResultWindow.ShowDialog();
+        }
+
+        protected override void OnShow(bool isVisible)
+        {
+            if (isVisible)
+            {
+                // Subscribe to the event when the dockpane becomes visible
+                MapSelectionChangedEvent.Subscribe(OnMapSelectionChanged);
+            }
+            else
+            {
+                // Unsubscribe when it's hidden
+                MapSelectionChangedEvent.Unsubscribe(OnMapSelectionChanged);
+            }
+            base.OnShow(isVisible);
+        }
+
+        /// <summary>
+        /// This method is called whenever the selection on the active map changes.
+        /// It now correctly handles the SelectionSet to find the selected graphic.
+        /// </summary>
+        private void OnMapSelectionChanged(MapSelectionChangedEventArgs args)
+        {
+            if (MapView.Active == null || args.Map == null) return;
+
+            // Run this on a background thread to safely interact with the map
+            QueuedTask.Run(() =>
+            {
+                // Find our dedicated graphics layer
+                var graphicsLayer = MapView.Active.Map.FindLayers("IC Loader Shapes").FirstOrDefault() as GraphicsLayer;
+                if (graphicsLayer == null) return;
+
+                // --- THIS IS THE CORRECTED LOGIC BASED ON YOUR EXAMPLE ---
+                // Get only the graphics that are currently selected within our specific layer.
+                var selectedGraphics = graphicsLayer.GetSelectedElements().OfType<CIMGraphic>();
+
+                // Get the first selected graphic from that list.
+                var firstSelectedGraphic = selectedGraphics.FirstOrDefault();
+                // --- END OF CORRECTION ---
+
+                if (firstSelectedGraphic == null)
+                {
+                    return;
+                }
+
+                if (firstSelectedGraphic.Attributes.TryGetValue("ShapeRefID", out object refIdObject) && refIdObject is int refId)
+                {
+                    // Find the ShapeItem with this ID in our lists.
+                    var shapeToSelect = _shapesToReview.FirstOrDefault(s => s.ShapeReferenceId == refId) ??
+                                        _selectedShapes.FirstOrDefault(s => s.ShapeReferenceId == refId);
+
+                    if (shapeToSelect != null)
+                    {
+                        // To avoid recursive event firing and UI thread issues,
+                        // we dispatch the selection change to the UI thread.
+                        FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                        {
+                            if (_shapesToReview.Contains(shapeToSelect))
+                            {
+                                if (!SelectedShapesForReview.Contains(shapeToSelect))
+                                {
+                                    SelectedShapesForReview.Clear();
+                                    SelectedShapesForReview.Add(shapeToSelect);
+                                }
+                            }
+                            else if (_selectedShapes.Contains(shapeToSelect))
+                            {
+                                if (!SelectedShapesToUse.Contains(shapeToSelect))
+                                {
+                                    SelectedShapesToUse.Clear();
+                                    SelectedShapesToUse.Add(shapeToSelect);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
         }
 
         #endregion

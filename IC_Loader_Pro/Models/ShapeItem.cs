@@ -32,6 +32,17 @@ namespace IC_Loader_Pro.Models
         public bool IsValid { get; set; }
         public string Status { get; set; } // e.g., "OK", "Self-Intersecting"
 
+        private double _distanceFromSite;
+        /// <summary>
+        /// The calculated distance from the site's coordinates to this shape.
+        /// </summary>
+        public double DistanceFromSite
+        {
+            get => _distanceFromSite;
+            set => SetProperty(ref _distanceFromSite, value);
+        }
+
+
         /// <summary>
         /// A dictionary to store the attribute values for the fields defined
         /// in the IC_Rules (the "fields to mine").

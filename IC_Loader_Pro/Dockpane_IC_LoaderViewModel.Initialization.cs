@@ -71,7 +71,7 @@ namespace IC_Loader_Pro
                 }
 
                 await EnsureManualAddLayerExistsAsync(activeMap);
-                await EnsureGraphicsLayerExistsAsync(activeMap);
+                await EnsureGraphicsLayersExistsAsync(activeMap);
 
                 Log.RecordMessage("Refreshing IC Queues...", BisLogMessageType.Note);
                 await RefreshICQueuesAsync();
@@ -222,27 +222,40 @@ namespace IC_Loader_Pro
         /// <summary>
         /// Ensures a dedicated graphics layer for displaying IC shapes exists on the map.
         /// </summary>
-        private Task EnsureGraphicsLayerExistsAsync(Map map)
+        private Task EnsureGraphicsLayersExistsAsync(Map map)
         {
-            const string layerName = "IC Loader Shapes";
+            const string drawLayerName = "IC Loader Shapes";
+            const string highlightLayerName = "IC Loader Highlight";
 
             return QueuedTask.Run(() =>
             {
                 // Check if the layer already exists
-                var existingLayer = map.FindLayers(layerName).FirstOrDefault();
+                var existingLayer = map.FindLayers(drawLayerName).FirstOrDefault();
                 if (existingLayer != null)
                 {
-                    Log.RecordMessage($"Graphics layer '{layerName}' already exists.", BisLogMessageType.Note);
-                    return;
+                    existingLayer.RemoveElements();
+                    Log.RecordMessage($"Graphics layer '{drawLayerName}' already exists.", BisLogMessageType.Note);                   
+                }
+                else // If not, create it and add it to the top of the map
+                {
+                    Log.RecordMessage($"Creating new graphics layer: '{drawLayerName}'", BisLogMessageType.Note);
+                    GraphicsLayerCreationParams graphicsLayerCreationParams = new GraphicsLayerCreationParams
+                    {
+                        Name = drawLayerName
+                    };
+                    GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
                 }
 
-                // If not, create it and add it to the top of the map
-                Log.RecordMessage($"Creating new graphics layer: '{layerName}'", BisLogMessageType.Note);
-                GraphicsLayerCreationParams graphicsLayerCreationParams = new GraphicsLayerCreationParams
+                // Check for the highlight layer
+                if (map.FindLayers(highlightLayerName).FirstOrDefault() == null)
                 {
-                    Name = layerName
-                };
-                GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
+                    GraphicsLayerCreationParams graphicsLayerCreationParams = new GraphicsLayerCreationParams
+                    {
+                        Name = highlightLayerName
+                    };
+                    // Create the highlight layer and add it to the top of the map
+                    GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
+                }
             });
         }
 

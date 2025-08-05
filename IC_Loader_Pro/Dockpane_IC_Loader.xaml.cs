@@ -26,7 +26,26 @@ namespace IC_Loader_Pro
         public Dockpane_IC_LoaderView()
         {
             InitializeComponent();
-        }      
+        }
+
+        private void DataGrid_GotFocus(object sender, RoutedEventArgs e)
+        {
+            if (ViewModel == null) return;
+
+            if (sender is DataGrid focusedGrid)
+            {
+                // If the "Review" grid got focus, clear the selection in the "Use" grid.
+                if (focusedGrid.ItemsSource == ViewModel.ShapesToReview)
+                {
+                    ViewModel.SelectedShapesToUse.Clear();
+                }
+                // If the "Use" grid got focus, clear the selection in the "Review" grid.
+                else if (focusedGrid.ItemsSource == ViewModel.SelectedShapes)
+                {
+                    ViewModel.SelectedShapesForReview.Clear();
+                }
+            }
+        }
     }
 }
 //System.Windows.Markup.XamlParseException: ''Provide value on 'System.Windows.Baml2006.TypeConverterMarkupExtension' threw an exception.' Line number '47' and line position '43'.'

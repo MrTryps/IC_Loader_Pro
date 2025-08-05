@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using static BIS_Log;
 using Path = System.IO.Path;
 using QueryFilter = ArcGIS.Core.Data.QueryFilter;
 
@@ -37,7 +38,7 @@ namespace IC_Loader_Pro.Services
         /// </summary>
         /// <param name="validFilesets">The list of valid filesets identified from the email attachments.</param>
         /// <returns>A list of ShapeItem objects ready for UI display and user review.</returns>
-        public async Task<List<ShapeItem>> AnalyzeFeaturesFromFilesetsAsync(List<fileset> identifiedFileSets, string icType)
+        public async Task<List<ShapeItem>> AnalyzeFeaturesFromFilesetsAsync(List<fileset> identifiedFileSets, string icType, MapPoint siteLocation)
         {
             _log.RecordMessage($"Starting feature analysis for {identifiedFileSets.Count} submitted fileset(s)...", BIS_Log.BisLogMessageType.Note);
             var allAnalyzedShapes = new List<ShapeItem>();
@@ -64,7 +65,7 @@ namespace IC_Loader_Pro.Services
                 {
                     // This method will perform all the checks (projection, self-intersection, area, etc.)
                     // and update the shapeItem's IsValid and Status properties.
-                    ValidateShape(shapeItem, icType);
+                    ValidateShape(shapeItem, icType, siteLocation);
 
                     // Add the fully analyzed shape to our master list.
                     allAnalyzedShapes.Add(shapeItem);
@@ -75,7 +76,7 @@ namespace IC_Loader_Pro.Services
             return allAnalyzedShapes;
         }
 
-        private void ValidateShape(ShapeItem shapeToValidate, string icType)
+        private void ValidateShape(ShapeItem shapeToValidate, string icType, MapPoint siteLocation)
         {
             if (shapeToValidate?.Geometry == null)
             {
@@ -95,7 +96,36 @@ namespace IC_Loader_Pro.Services
 
             var geometry = shapeToValidate.Geometry;
 
-            // 1. Check if the shape is a polygon
+            // 1: Check and Reproject Spatial Reference ---
+            // We will use the WKID for NAD 1983 State Plane New Jersey FIPS 2900 (US Feet).
+            // The modern WKID is 102711 (the older one was 2260).
+            var njspfSr = SpatialReferenceBuilder.CreateSpatialReference(2260);
+            if (geometry.SpatialReference == null || !geometry.SpatialReference.IsEqual(njspfSr))
+            {
+                try
+                {
+                    // If not, reproject it.
+                    var projectedGeometry = GeometryEngine.Instance.Project(geometry, njspfSr);
+                    if (projectedGeometry != null)
+                    {
+                        shapeToValidate.Geometry = projectedGeometry as Polygon; // Update the geometry
+                        _log.RecordMessage($"Shape {shapeToValidate.ShapeReferenceId} was reprojected to NJ State Plane.", BisLogMessageType.Note);
+                    }
+                    else
+                    {
+                        throw new Exception("Projection returned a null geometry.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.RecordError($"Failed to reproject geometry for shape {shapeToValidate.ShapeReferenceId}.", ex, "ValidateShape");
+                    shapeToValidate.IsValid = false;
+                    shapeToValidate.Status = "Reprojection Failed";
+                    return; // Stop validation if reprojection fails.
+                }
+            }
+
+            // 2. Check if the shape is a polygon
             if (geometry.GeometryType != GeometryType.Polygon)
             {
                 shapeToValidate.IsValid = false;
@@ -103,7 +133,7 @@ namespace IC_Loader_Pro.Services
                 return;
             }
 
-            // 2. Check if the geometry is empty
+            // 3. Check if the geometry is empty
             if (geometry.IsEmpty)
             {
                 shapeToValidate.IsValid = false;
@@ -111,7 +141,7 @@ namespace IC_Loader_Pro.Services
                 return;
             }
 
-            // 3. Check and correct the spatial reference (projection)
+            // 4. Check and correct the spatial reference (projection)
             var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
             if (!geometry.SpatialReference.IsEqual(requiredSr))
             {
@@ -129,7 +159,7 @@ namespace IC_Loader_Pro.Services
                 }
             }
 
-            // 4. Check for self-intersection and simplify if necessary (the modern way)
+            // 5. Check for self-intersection and simplify if necessary (the modern way)
             // The GeometryEngine's SimplifyAsFeature method can fix many common geometry errors.
             if (!GeometryEngine.Instance.IsSimpleAsFeature(geometry))
             {
@@ -138,7 +168,7 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.Status = "Repaired (Simplified)";
             }
 
-            // 5. Check the area against the minimum threshold
+            // 6. Check the area against the minimum threshold
             double area = (geometry as Polygon).Area;
             shapeToValidate.Area = area;
             if (Math.Abs(area) < geometryRules.Min_Area)
@@ -146,6 +176,36 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Area Below Minimum";
                 return;
+            }
+
+            // 7.  Check if the shape is within the allowed extent ---
+            var extent = geometry.Extent;
+            if (extent.XMin < geometryRules.X_Min ||
+                extent.XMax > geometryRules.X_Max ||
+                extent.YMin < geometryRules.Y_Min ||
+                extent.YMax > geometryRules.Y_Max)
+            {
+                shapeToValidate.IsValid = false;
+                shapeToValidate.Status = "Outside Allowable Extent";
+                return;
+            }
+
+            // 8. Check the distance from the site, if a site location was provided.
+            if (siteLocation != null && shapeToValidate.Geometry != null)
+            {
+                //_log.RecordMessage("--- Preparing for Distance Calculation ---", BisLogMessageType.Note);
+                //_log.RecordMessage($"Polygon SR WKID: {geometry.SpatialReference?.Wkid ?? -1}", BisLogMessageType.Note);
+                //_log.RecordMessage($"Site Location SR WKID: {siteLocation.SpatialReference?.Wkid ?? -1}", BisLogMessageType.Note);
+                //_log.RecordMessage($"Required SR WKID: {njspfSr.Wkid}", BisLogMessageType.Note);
+                // Use the GeometryEngine to calculate the geodetic distance.
+                double distance = GeometryEngine.Instance.Distance(shapeToValidate.Geometry, siteLocation);
+                shapeToValidate.DistanceFromSite = distance; // Store the distance
+
+                if (geometryRules != null && distance > geometryRules.SiteDistance)
+                {
+                    shapeToValidate.IsValid = false;
+                    shapeToValidate.Status = "Exceeds Max Distance from Site";
+                }
             }
 
             // If all checks pass, the shape is considered valid
