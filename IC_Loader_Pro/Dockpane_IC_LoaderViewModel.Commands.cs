@@ -314,30 +314,7 @@ namespace IC_Loader_Pro
             // After moving the items, redraw the map to update their symbols.
             await RedrawAllShapesOnMapAsync();
         }
-
-        private async void ToggleSelectTool()
-        {
-            if (IsSelectToolActive)
-            {
-                // If the toggle button is checked, activate our custom tool
-                await FrameworkApplication.SetCurrentToolAsync(SelectToolId);
-            }
-            else
-            {
-                // If the toggle button is unchecked, revert to the default tool
-                await FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
-            }
-        }
-
-        /// <summary>
-        /// Called by the MapTool to deactivate itself after a successful selection.
-        /// </summary>
-        public void DeactivateSelectTool()
-        {
-            // This will set the IsSelectToolActive property to false,
-            // which in turn calls ToggleSelectTool() to revert to the explore tool.
-            IsSelectToolActive = false;
-        }
+             
 
         private async Task OnZoomToSelectedReviewShape()
         {

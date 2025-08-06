@@ -58,19 +58,8 @@ namespace IC_Loader_Pro
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
 
-        private bool _isSelectToolActive = false;
-        public bool IsSelectToolActive
-        {
-            get => _isSelectToolActive;
-            set
-            {
-                // When this property changes, toggle the tool
-                if (SetProperty(ref _isSelectToolActive, value))
-                {
-                    ToggleSelectTool();
-                }
-            }
-        }
+        public ShapeItem SelectedShapeForReview { get; set; }
+        public ShapeItem SelectedShapeToUse { get; set; }
 
         private string _currentEmailId;
         public string CurrentEmailId
@@ -163,7 +152,7 @@ namespace IC_Loader_Pro
             ZoomToSelectedUseShapeCommand = new RelayCommand(async () => await OnZoomToSelectedUseShape(), () => SelectedShapesToUse.Any());
             ZoomToSiteCommand = new RelayCommand(async () => await OnZoomToSiteAsync(),() => _currentSiteLocation != null);
             ClearSelectionCommand = new RelayCommand(OnClearSelection,() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
-            ActivateSelectToolCommand = new RelayCommand(() => IsSelectToolActive = !IsSelectToolActive);
+            ActivateSelectToolCommand = new RelayCommand(ActivateSelectTool);
         }
         #endregion
      
@@ -348,6 +337,15 @@ namespace IC_Loader_Pro
                 SelectedShapesToUse.Clear();
             });
         }
+
+
+        private async void ActivateSelectTool()
+        {
+            Log.RecordMessage("ActivateSelectTool command executed. Attempting to set current tool.", BIS_Log.BisLogMessageType.Note);
+            await FrameworkApplication.SetCurrentToolAsync(SelectToolId);
+        }
+
+
 
         /// <summary>
         /// Gathers all geometries from the review list, the selected list, and the site point,
@@ -562,6 +560,7 @@ namespace IC_Loader_Pro
                             {
                                 SelectedShapesForReview.Clear();
                                 SelectedShapesForReview.Add(shapeToSelect);
+                                SelectedShapeForReview = shapeToSelect;
                             }
                         }
                         else if (_selectedShapes.Contains(shapeToSelect))
@@ -571,9 +570,9 @@ namespace IC_Loader_Pro
                             {
                                 SelectedShapesToUse.Clear();
                                 SelectedShapesToUse.Add(shapeToSelect);
+                                SelectedShapeToUse = shapeToSelect;
                             }
                         }
-                        IsSelectToolActive = false;
                     });
                 }
                 else

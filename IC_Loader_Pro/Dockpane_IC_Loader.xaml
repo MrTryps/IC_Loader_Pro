@@ -137,6 +137,7 @@
                         </DataGrid.InputBindings>
 
                         <DataGrid.Columns>
+                            <DataGridTextColumn Header="ID" Binding="{Binding ShapeReferenceId}" Width="Auto"/>
                             <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                             <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>
@@ -155,13 +156,13 @@
                     </Style>
                 </StackPanel.Resources>
 
-                <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" 
-                  Content="Select Shape"
-                  IsChecked="{Binding IsSelectToolActive}"
-                  Command="{Binding ActivateSelectToolCommand}"
-                  ToolTip="Activate tool to select shapes on the map"
-                  Height="24">
-                </ToggleButton>
+                <Button Command="{Binding ActivateSelectToolCommand}"                        
+                    ToolTip="Activate tool to select shapes on the map"
+                    Height="24">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Select Shape" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <Button Command="{Binding ZoomToAllCommand}" ToolTip="Zoom to all shapes in both lists">
                     <TextBlock Text="Zoom to All" TextWrapping="Wrap" TextAlignment="Center"/>
@@ -205,6 +206,7 @@
                     </DataGrid.InputBindings>
 
                     <DataGrid.Columns>
+                        <DataGridTextColumn Header="ID" Binding="{Binding ShapeReferenceId}" Width="Auto"/>
                         <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                         <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>

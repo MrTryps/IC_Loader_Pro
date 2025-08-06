@@ -26,17 +26,30 @@ namespace IC_Loader_Pro
         /// <summary>
         /// Called by the framework when the tool is activated.
         /// </summary>
-        protected override Task OnToolActivateAsync(bool active)
+        protected override Task OnToolActivateAsync(bool hasMapViewChanged)
         {
-            if (active)
+            Log.RecordMessage("SelectShapeTool has been ACTIVATED.", BIS_Log.BisLogMessageType.Note);
+            return base.OnToolActivateAsync(hasMapViewChanged);
+        }
+
+        protected override Task OnToolDeactivateAsync(bool hasMapViewChanged)
+        {
+            Log.RecordMessage("SelectShapeTool has been DEACTIVATED.", BIS_Log.BisLogMessageType.Note);
+            return base.OnToolDeactivateAsync(hasMapViewChanged);
+        }
+
+        /// <summary>
+        /// This synchronous method is called first for any mouse down event.
+        /// We set args.Handled = true to indicate that we are taking control
+        /// and that the framework should now call HandleMouseDownAsync.
+        /// </summary>
+        protected override void OnToolMouseDown(MapViewMouseButtonEventArgs args)
+        {
+            // We only handle the left mouse button.
+            if (args.ChangedButton == MouseButton.Left)
             {
-                Log.RecordMessage("SelectShapeTool has been ACTIVATED.", BIS_Log.BisLogMessageType.Note);
+                args.Handled = true;
             }
-            else
-            {
-                Log.RecordMessage("SelectShapeTool has been DEACTIVATED.", BIS_Log.BisLogMessageType.Note);
-            }
-            return base.OnToolActivateAsync(active);
         }
 
         /// <summary>
@@ -46,11 +59,11 @@ namespace IC_Loader_Pro
         {
             Log.RecordMessage("HandleMouseDownAsync triggered.", BIS_Log.BisLogMessageType.Note);
             // We only care about the left mouse button.
-            if (e.ChangedButton != MouseButton.Left)
-            {
-                return Task.CompletedTask;
-            }
-            Log.RecordMessage("Left button triggered.", BIS_Log.BisLogMessageType.Note);
+            //if (e.ChangedButton != MouseButton.Left)
+            //{
+            //    return Task.CompletedTask;
+            //}
+            //Log.RecordMessage("Left button triggered.", BIS_Log.BisLogMessageType.Note);
             var pane = FrameworkApplication.DockPaneManager.Find(Dockpane_IC_LoaderViewModel.DockPaneId) as Dockpane_IC_LoaderViewModel;
             if (pane == null)
                 return Task.CompletedTask;
@@ -99,12 +112,14 @@ namespace IC_Loader_Pro
                 {
                     Log.RecordMessage($"SUCCESS: Found intersecting element with Name: '{topElement.Name}'", BIS_Log.BisLogMessageType.Note);
                     pane.SelectShapeFromTool(topElement.Name);
-                    pane.DeactivateSelectTool();
+                    // pane.DeactivateSelectTool();
+                    FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
                 }
                 else
                 {
                     Log.RecordMessage("INFO: Spatial query ran, but no intersecting element was found.", BIS_Log.BisLogMessageType.Note);
-                    pane.DeactivateSelectTool();
+                    //  pane.DeactivateSelectTool();
+                    FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
                 }
             });
         }
