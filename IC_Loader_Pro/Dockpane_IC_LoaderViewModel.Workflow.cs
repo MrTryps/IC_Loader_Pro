@@ -38,7 +38,7 @@ namespace IC_Loader_Pro
         private async Task RefreshICQueuesAsync()
         {
             // --- Step 1: Initial UI update ---
-            Log.RecordMessage("Step 1: Calling RunOnUIThread to disable UI.", BisLogMessageType.Note);
+            //Log.RecordMessage("Step 1: Calling RunOnUIThread to disable UI.", BisLogMessageType.Note);
             await RunOnUIThread(() =>
             {
                 IsUIEnabled = false;
@@ -58,10 +58,10 @@ namespace IC_Loader_Pro
                     Name = kvp.Key,
                     EmailCount = kvp.Value.Count
                 }).ToList();
-                Log.RecordMessage($"Step 2: Background work complete. Found {totalEmailCount} summaries.", BisLogMessageType.Note);
+                Log.RecordMessage($"Found {totalEmailCount} IC Emails.", BisLogMessageType.Note);
 
                 // --- Step 3: Final UI update ---
-                Log.RecordMessage("Step 3: Calling RunOnUIThread to update UI with results.", BisLogMessageType.Note);
+               // Log.RecordMessage("Step 3: Calling RunOnUIThread to update UI with results.", BisLogMessageType.Note);
                 await RunOnUIThread(() =>
                 {
                     lock (_lockQueueCollection)
@@ -72,9 +72,9 @@ namespace IC_Loader_Pro
                             _ListOfIcEmailTypeSummaries.Add(summary);
                         }
                     }
-                    Log.RecordMessage($"Verification: _ListOfIcEmailTypeSummaries now contains {_ListOfIcEmailTypeSummaries.Count} items.", BisLogMessageType.Note);
+                    //Log.RecordMessage($"Verification: _ListOfIcEmailTypeSummaries now contains {_ListOfIcEmailTypeSummaries.Count} items.", BisLogMessageType.Note);
                     SelectedIcType = PublicListOfIcEmailTypeSummaries.FirstOrDefault();
-                    Log.RecordMessage($"Successfully loadedxxx {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
+                    //Log.RecordMessage($"Successfully loaded {PublicListOfIcEmailTypeSummaries.Count} queues.", BisLogMessageType.Note);
 
                     if (SelectedIcType != null)
                     {
@@ -85,7 +85,7 @@ namespace IC_Loader_Pro
                         StatusMessage = "No emails found in the specified queues.";
                     }
                 });
-                Log.RecordMessage("Step 3: Completed.", BisLogMessageType.Note);
+                //Log.RecordMessage("Step 3: Completed.", BisLogMessageType.Note);
             }
             catch (OutlookNotResponsiveException ex)
             {
@@ -108,9 +108,9 @@ namespace IC_Loader_Pro
             {
                 // --- Step 4: Re-enable UI ---
                 if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
-                Log.RecordMessage("Step 4: Calling RunOnUIThread to re-enable UI.", BisLogMessageType.Note);
+               // Log.RecordMessage("Step 4: Calling RunOnUIThread to re-enable UI.", BisLogMessageType.Note);
                 await RunOnUIThread(() => { IsUIEnabled = true; });
-                Log.RecordMessage("Step 4: Completed.", BisLogMessageType.Note);
+               // Log.RecordMessage("Step 4: Completed.", BisLogMessageType.Note);
             }
         }
 
@@ -444,20 +444,19 @@ namespace IC_Loader_Pro
                 {
                     if (shapeItem.Geometry != null)
                     {
-                        // Create a dictionary to hold the attributes
-                        var attributes = new Dictionary<string, object>
-                        {
-                            { "ShapeRefID", shapeItem.ShapeReferenceId }
-                        };
-                        GraphicElement polyElm = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, reviewSymbol);
-
-                        var graphic = new CIMPolygonGraphic
-                        {
-                            Symbol = reviewSymbol.MakeSymbolReference(),
-                            Polygon = shapeItem.Geometry,
-                            Attributes = attributes
-                        };
-                        graphicsLayer.AddElement(graphic);
+                         graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
+                        //var newElement = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
+                        //var attributes = new Dictionary<string, object>
+                        //{
+                        //    { "ShapeRefID", shapeItem.ShapeReferenceId }
+                        //};
+                        //var graphic = new CIMPolygonGraphic
+                        //{
+                        //    Polygon = shapeItem.Geometry,
+                        //    Symbol = reviewSymbol.MakeSymbolReference(), // Use MakeSymbolReference()
+                        //    Attributes = attributes
+                        //};
+                        //graphicsLayer.AddElement(graphic);
                     }
                 }
 
@@ -465,29 +464,27 @@ namespace IC_Loader_Pro
                 {
                     if (shapeItem.Geometry != null)
                     {
-                        // Create a dictionary to hold the attributes
-                        var attributes = new Dictionary<string, object>
-                        {
-                            { "ShapeRefID", shapeItem.ShapeReferenceId }
-                        };
-                        GraphicElement polyElm = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, useSymbol);
-
-                        var graphic = new CIMPolygonGraphic
-                        {
-                            Symbol = useSymbol.MakeSymbolReference(),
-                            Polygon = shapeItem.Geometry,
-                            Attributes = attributes
-                        };
-                        graphicsLayer.AddElement(graphic);
-
-                        //graphicsLayer.AddElement(shapeItem.Geometry, useSymbol);
-                    }
+                         graphicsLayer.AddElement(shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
+                        //var newElement = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
+                        //var attributes = new Dictionary<string, object>
+                        //{
+                        //    { "ShapeRefID", shapeItem.ShapeReferenceId }
+                        //};
+                        //var graphic = new CIMPolygonGraphic
+                        //{
+                        //    Polygon = shapeItem.Geometry,
+                        //    Symbol = useSymbol.MakeSymbolReference(), // Use MakeSymbolReference()
+                        //    Attributes = attributes
+                        //};
+                        //graphicsLayer.AddElement(graphic);
+                    }              
                 }
 
                 if (_currentSiteLocation != null)
                 {
                     graphicsLayer.AddElement(_currentSiteLocation, siteSymbol);
                 }
+                graphicsLayer.ClearSelection();
             });
         }
 

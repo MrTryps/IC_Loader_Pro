@@ -77,6 +77,7 @@ namespace IC_Loader_Pro
                 await RefreshICQueuesAsync();
 
                 Log.RecordMessage("Initialization complete.", BisLogMessageType.Note);
+                Log.AddBlankLine();
                 StatusMessage = "Ready. Please select an IC Type.";
                 IsUIEnabled = true; // Enable the UI now that setup is complete
             }
@@ -230,11 +231,11 @@ namespace IC_Loader_Pro
             return QueuedTask.Run(() =>
             {
                 // Check if the layer already exists
-                var existingLayer = map.FindLayers(drawLayerName).FirstOrDefault();
-                if (existingLayer != null)
+                var drawLayer = map.FindLayers(drawLayerName).FirstOrDefault() as GraphicsLayer;
+                if (drawLayer != null)
                 {
-                    existingLayer.RemoveElements();
-                    Log.RecordMessage($"Graphics layer '{drawLayerName}' already exists.", BisLogMessageType.Note);                   
+                    drawLayer.RemoveElements();
+                   // Log.RecordMessage($"Graphics layer '{drawLayerName}' already exists.", BisLogMessageType.Note);                   
                 }
                 else // If not, create it and add it to the top of the map
                 {
@@ -243,19 +244,36 @@ namespace IC_Loader_Pro
                     {
                         Name = drawLayerName
                     };
-                    GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
+                    drawLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
+                }
+
+                _graphicsLayer = drawLayer;
+
+                var drawLayerDef = drawLayer.GetDefinition() as CIMGraphicsLayer;
+                if (drawLayerDef != null)
+                {
+                    // 2. Modify the blueprint
+                    drawLayerDef.Selectable = true;
+                    // 3. Apply the modified blueprint back to the layer
+                    drawLayer.SetDefinition(drawLayerDef);
                 }
 
                 // Check for the highlight layer
-                if (map.FindLayers(highlightLayerName).FirstOrDefault() == null)
+                var highlightLayer = map.FindLayers(highlightLayerName).FirstOrDefault() as GraphicsLayer;
+                if (highlightLayer != null)
                 {
+                    highlightLayer.RemoveElements(); // Clear existing elements
+                   // Log.RecordMessage($"Highlight layer '{highlightLayerName}' already exists.", BisLogMessageType.Note);
+                }
+                else
+                {
+                    // Create the highlight layer and add it to the top of the map
                     GraphicsLayerCreationParams graphicsLayerCreationParams = new GraphicsLayerCreationParams
                     {
                         Name = highlightLayerName
                     };
-                    // Create the highlight layer and add it to the top of the map
                     GraphicsLayer newGraphicsLayer = LayerFactory.Instance.CreateLayer<GraphicsLayer>(graphicsLayerCreationParams, map);
-                }
+                }           
             });
         }
 

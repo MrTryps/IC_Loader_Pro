@@ -16,6 +16,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
@@ -44,6 +45,7 @@ namespace IC_Loader_Pro
         public ICommand ZoomToSelectedReviewShapeCommand { get; private set; }
         public ICommand ZoomToSelectedUseShapeCommand { get; private set; }
         public ICommand ZoomToSiteCommand { get; private set; }
+        public ICommand ActivateSelectToolCommand { get; private set; }
 
         #endregion
 
@@ -271,79 +273,8 @@ namespace IC_Loader_Pro
 
         protected override void OnShow(bool isVisible)
         {
-            if (isVisible)
-            {
-                // Subscribe to the event when the dockpane becomes visible
-                MapSelectionChangedEvent.Subscribe(OnMapSelectionChanged);
-            }
-            else
-            {
-                // Unsubscribe when it's hidden
-                MapSelectionChangedEvent.Unsubscribe(OnMapSelectionChanged);
-            }
+ 
             base.OnShow(isVisible);
-        }
-
-        /// <summary>
-        /// This method is called whenever the selection on the active map changes.
-        /// It now correctly handles the SelectionSet to find the selected graphic.
-        /// </summary>
-        private void OnMapSelectionChanged(MapSelectionChangedEventArgs args)
-        {
-            if (MapView.Active == null || args.Map == null) return;
-
-            // Run this on a background thread to safely interact with the map
-            QueuedTask.Run(() =>
-            {
-                // Find our dedicated graphics layer
-                var graphicsLayer = MapView.Active.Map.FindLayers("IC Loader Shapes").FirstOrDefault() as GraphicsLayer;
-                if (graphicsLayer == null) return;
-
-                // --- THIS IS THE CORRECTED LOGIC BASED ON YOUR EXAMPLE ---
-                // Get only the graphics that are currently selected within our specific layer.
-                var selectedGraphics = graphicsLayer.GetSelectedElements().OfType<CIMGraphic>();
-
-                // Get the first selected graphic from that list.
-                var firstSelectedGraphic = selectedGraphics.FirstOrDefault();
-                // --- END OF CORRECTION ---
-
-                if (firstSelectedGraphic == null)
-                {
-                    return;
-                }
-
-                if (firstSelectedGraphic.Attributes.TryGetValue("ShapeRefID", out object refIdObject) && refIdObject is int refId)
-                {
-                    // Find the ShapeItem with this ID in our lists.
-                    var shapeToSelect = _shapesToReview.FirstOrDefault(s => s.ShapeReferenceId == refId) ??
-                                        _selectedShapes.FirstOrDefault(s => s.ShapeReferenceId == refId);
-
-                    if (shapeToSelect != null)
-                    {
-                        // To avoid recursive event firing and UI thread issues,
-                        // we dispatch the selection change to the UI thread.
-                        FrameworkApplication.Current.Dispatcher.Invoke(() =>
-                        {
-                            if (_shapesToReview.Contains(shapeToSelect))
-                            {
-                                if (!SelectedShapesForReview.Contains(shapeToSelect))
-                                {
-                                    SelectedShapesForReview.Clear();
-                                    SelectedShapesForReview.Add(shapeToSelect);
-                                }
-                            }
-                            else if (_selectedShapes.Contains(shapeToSelect))
-                            {
-                                if (!SelectedShapesToUse.Contains(shapeToSelect))
-                                {
-                                    SelectedShapesToUse.Clear();
-                                    SelectedShapesToUse.Add(shapeToSelect);
-                                }
-                            }
-                        });
-                    }
-                }
-            });
         }
 
         #endregion
@@ -382,6 +313,30 @@ namespace IC_Loader_Pro
             });
             // After moving the items, redraw the map to update their symbols.
             await RedrawAllShapesOnMapAsync();
+        }
+
+        private async void ToggleSelectTool()
+        {
+            if (IsSelectToolActive)
+            {
+                // If the toggle button is checked, activate our custom tool
+                await FrameworkApplication.SetCurrentToolAsync(SelectToolId);
+            }
+            else
+            {
+                // If the toggle button is unchecked, revert to the default tool
+                await FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
+            }
+        }
+
+        /// <summary>
+        /// Called by the MapTool to deactivate itself after a successful selection.
+        /// </summary>
+        public void DeactivateSelectTool()
+        {
+            // This will set the IsSelectToolActive property to false,
+            // which in turn calls ToggleSelectTool() to revert to the explore tool.
+            IsSelectToolActive = false;
         }
 
         private async Task OnZoomToSelectedReviewShape()

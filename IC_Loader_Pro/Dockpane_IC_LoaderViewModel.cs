@@ -33,6 +33,7 @@ namespace IC_Loader_Pro
         /// The unique ID of this dockpane, must match the ID in Config.daml
         /// </summary>
         public const string DockPaneId = "IC_Loader_Pro_Dockpane_IC_Loader";
+        public const string SelectToolId = "IC_Loader_Pro_SelectShapeTool";
 
         private readonly object _lockQueueCollection = new object();
         // This is the "real" list that we will add/remove items from
@@ -50,12 +51,26 @@ namespace IC_Loader_Pro
         public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
         private MapPoint _currentSiteLocation;
-
+        private GraphicsLayer _graphicsLayer = null;
         private ICQueueSummary _selectedQueue;
         private bool _isInitialized = false;
         private readonly object _lock = new object();
         private string _statusMessage = "Please open or create an ArcGIS Pro project.";
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
+        private bool _isSelectToolActive = false;
+        public bool IsSelectToolActive
+        {
+            get => _isSelectToolActive;
+            set
+            {
+                // When this property changes, toggle the tool
+                if (SetProperty(ref _isSelectToolActive, value))
+                {
+                    ToggleSelectTool();
+                }
+            }
+        }
 
         private string _currentEmailId;
         public string CurrentEmailId
@@ -148,6 +163,7 @@ namespace IC_Loader_Pro
             ZoomToSelectedUseShapeCommand = new RelayCommand(async () => await OnZoomToSelectedUseShape(), () => SelectedShapesToUse.Any());
             ZoomToSiteCommand = new RelayCommand(async () => await OnZoomToSiteAsync(),() => _currentSiteLocation != null);
             ClearSelectionCommand = new RelayCommand(OnClearSelection,() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
+            ActivateSelectToolCommand = new RelayCommand(() => IsSelectToolActive = !IsSelectToolActive);
         }
         #endregion
      
@@ -177,25 +193,13 @@ namespace IC_Loader_Pro
                 if (value != null)
                 {
                     _currentIcSetting = IcRules.ReturnIcGisTypeSettings(value.Name);
+                // The underscore discards the returned Task, which is a standard
                     _ = ProcessSelectedQueueAsync();
                 }
                 else
                 {
                     _currentIcSetting = null;
-                }
-
-                // If the new selection is not null, kick off the processing.
-                // The underscore discards the returned Task, which is a standard
-                // way to call an async method from a synchronous property setter.
-                if (value != null)
-                {
-                    _ = ProcessSelectedQueueAsync();
-                }
-
-
-                // SetProperty is a helper method from the DockPane base class
-               // SetProperty(ref _selectedQueue, value, () => SelectedIcType);
-                // When a queue is selected, we can trigger logic here later
+                }             
             }
         }
 
@@ -286,7 +290,7 @@ namespace IC_Loader_Pro
         }
 
         private void OnActiveMapViewChanged(ActiveMapViewChangedEventArgs args)
-        {
+        {          
             if (MapView.Active != null && !_isInitialized)
             {
                 // A map view is now active and we haven't run our setup yet.
@@ -297,7 +301,9 @@ namespace IC_Loader_Pro
                 // every time the user switches between maps.
                 _isInitialized = true;
             }
-        }
+        }     
+
+
 
         private async Task OnAddAllShapes()
         {
@@ -437,7 +443,7 @@ namespace IC_Loader_Pro
 
                 // Get the geometries from BOTH selection lists
                 var selectedGeometries = SelectedShapesForReview.OfType<ShapeItem>().Select(s => s.Geometry)
-                                             .Concat(SelectedShapesToUse.OfType<ShapeItem>().Select(s => s.Geometry));
+                                             .Concat(SelectedShapesToUse.OfType<ShapeItem>().Select(s => s.Geometry)).ToList();
 
                 // Add each selected shape's geometry to the highlight layer
                 foreach (var geom in selectedGeometries)
@@ -491,7 +497,7 @@ namespace IC_Loader_Pro
         private Task RunOnUIThread(Action action)
         {
             //Log.RecordMessage("Attempting to schedule action on UI thread...", BisLogMessageType.Note);
-            if (OnUIThread)
+            if (IsOnUIThread)
             {
                 // We are, so we can run the action directly.
                 action();
@@ -508,7 +514,7 @@ namespace IC_Loader_Pro
         /// <summary>
         /// Determines if the application is currently on the UI thread.
         /// </summary>
-        private bool OnUIThread
+        private bool IsOnUIThread
         {
             get
             {
@@ -520,6 +526,67 @@ namespace IC_Loader_Pro
         }
         #endregion
 
+        #region Public Methods for Tool Interaction
 
+        /// <summary>
+        /// A helper for the SelectShapeTool to get a reference to the graphics layer.
+        /// </summary>
+        public GraphicsLayer GetGraphicsLayer()
+        {
+            return _graphicsLayer;
+        }
+
+        /// <summary>
+        /// Processes a shape selection coming from the custom map tool.
+        /// </summary>
+        public void SelectShapeFromTool(string elementName)
+        {
+            Log.RecordMessage($"SelectShapeFromTool received element name: '{elementName}'", BIS_Log.BisLogMessageType.Note);
+            // Try to parse the Shape's ID from the element's Name property.
+            if (int.TryParse(elementName, out int refId))
+            {
+                // Find the matching ShapeItem in our ViewModel's collections.
+                var shapeToSelect = _shapesToReview.FirstOrDefault(s => s.ShapeReferenceId == refId) ??
+                                    _selectedShapes.FirstOrDefault(s => s.ShapeReferenceId == refId);
+
+                if (shapeToSelect != null)
+                {
+                    Log.RecordMessage($"Found matching ShapeItem with ID: {refId}. Updating UI.", BIS_Log.BisLogMessageType.Note);
+                    // Update the UI selections on the main thread.
+                    FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (_shapesToReview.Contains(shapeToSelect))
+                        {
+                            SelectedShapesToUse.Clear();
+                            if (!SelectedShapesForReview.Contains(shapeToSelect))
+                            {
+                                SelectedShapesForReview.Clear();
+                                SelectedShapesForReview.Add(shapeToSelect);
+                            }
+                        }
+                        else if (_selectedShapes.Contains(shapeToSelect))
+                        {
+                            SelectedShapesForReview.Clear();
+                            if (!SelectedShapesToUse.Contains(shapeToSelect))
+                            {
+                                SelectedShapesToUse.Clear();
+                                SelectedShapesToUse.Add(shapeToSelect);
+                            }
+                        }
+                        IsSelectToolActive = false;
+                    });
+                }
+                else
+                {
+                    Log.RecordMessage($"No matching ShapeItem found for ID: {refId}.", BIS_Log.BisLogMessageType.Warning);
+                }
+            }
+            else
+            {
+                Log.RecordMessage($"Failed to parse Shape ID from element name: '{elementName}'.", BIS_Log.BisLogMessageType.Warning);
+            }
+        }
+
+        #endregion
     }
 }

@@ -27,7 +27,13 @@
         </group>
       </groups>
       <controls>
-        <!-- add your controls here -->
+        <tool id="IC_Loader_Pro_SelectShapeTool"
+          caption="Select IC Shape"
+          className="SelectShapeTool"
+          smallImage="Images\IC_LoadTool_16.png"
+          tooltip="Select an IC Shape">
+          <tooltip heading="Tooltip heading">Tooltip text</tooltip>
+        </tool>
         <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" 
                 caption="Show Dockpane _IC_Loader" 
                 className="Dockpane_IC_Loader_ShowButton" 
