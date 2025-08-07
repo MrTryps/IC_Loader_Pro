@@ -50,6 +50,8 @@ namespace IC_Loader_Pro
         public ReadOnlyObservableCollection<ShapeItem> ShapesToReview { get; }
         public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
+
+
         private MapPoint _currentSiteLocation;
         private GraphicsLayer _graphicsLayer = null;
         private ICQueueSummary _selectedQueue;
@@ -109,6 +111,19 @@ namespace IC_Loader_Pro
         {
             get => _currentDelId;
             set => SetProperty(ref _currentDelId, value);
+        }
+
+        private bool _isSelectToolActive = false;
+        public bool IsSelectToolActive
+        {
+            get => _isSelectToolActive;
+            set
+            {
+                if (SetProperty(ref _isSelectToolActive, value))
+                {
+                    ToggleSelectTool();
+                }
+            }
         }
 
         #endregion
@@ -220,14 +235,14 @@ namespace IC_Loader_Pro
 
 
 
-        //private ShapeItem _selectedShapeForReview;
+        private ShapeItem _selectedShapeForReview;
         //public ShapeItem SelectedShapeForReview
         //{
         //    get => _selectedShapeForReview;
         //    set => SetProperty(ref _selectedShapeForReview, value);
         //}
 
-        //private ShapeItem _selectedShapeToUse;
+        private ShapeItem _selectedShapeToUse;
         //public ShapeItem SelectedShapeToUse
         //{
         //    get => _selectedShapeToUse;
@@ -537,53 +552,52 @@ namespace IC_Loader_Pro
         /// <summary>
         /// Processes a shape selection coming from the custom map tool.
         /// </summary>
-        public void SelectShapeFromTool(string elementName)
+        public async void SelectShapeFromTool(string elementName)
         {
-            Log.RecordMessage($"SelectShapeFromTool received element name: '{elementName}'", BIS_Log.BisLogMessageType.Note);
-            // Try to parse the Shape's ID from the element's Name property.
             if (int.TryParse(elementName, out int refId))
             {
-                // Find the matching ShapeItem in our ViewModel's collections.
                 var shapeToSelect = _shapesToReview.FirstOrDefault(s => s.ShapeReferenceId == refId) ??
                                     _selectedShapes.FirstOrDefault(s => s.ShapeReferenceId == refId);
 
                 if (shapeToSelect != null)
                 {
-                    Log.RecordMessage($"Found matching ShapeItem with ID: {refId}. Updating UI.", BIS_Log.BisLogMessageType.Note);
-                    // Update the UI selections on the main thread.
-                    FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                    // The logic is now very simple. We just update the collection.
+                    // The new two-way behavior will see this change and force the UI to update visually.
+                    await RunOnUIThread(() =>
                     {
                         if (_shapesToReview.Contains(shapeToSelect))
                         {
                             SelectedShapesToUse.Clear();
-                            if (!SelectedShapesForReview.Contains(shapeToSelect))
-                            {
-                                SelectedShapesForReview.Clear();
-                                SelectedShapesForReview.Add(shapeToSelect);
-                                SelectedShapeForReview = shapeToSelect;
-                            }
+                            SelectedShapesForReview.Clear();
+                            SelectedShapesForReview.Add(shapeToSelect);
                         }
                         else if (_selectedShapes.Contains(shapeToSelect))
                         {
                             SelectedShapesForReview.Clear();
-                            if (!SelectedShapesToUse.Contains(shapeToSelect))
-                            {
-                                SelectedShapesToUse.Clear();
-                                SelectedShapesToUse.Add(shapeToSelect);
-                                SelectedShapeToUse = shapeToSelect;
-                            }
+                            SelectedShapesToUse.Clear();
+                            SelectedShapesToUse.Add(shapeToSelect);
                         }
                     });
                 }
-                else
-                {
-                    Log.RecordMessage($"No matching ShapeItem found for ID: {refId}.", BIS_Log.BisLogMessageType.Warning);
-                }
+            }
+        }
+
+        private async void ToggleSelectTool()
+        {
+            if (IsSelectToolActive)
+            {
+                await FrameworkApplication.SetCurrentToolAsync(SelectToolId);
             }
             else
             {
-                Log.RecordMessage($"Failed to parse Shape ID from element name: '{elementName}'.", BIS_Log.BisLogMessageType.Warning);
+                await FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
             }
+        }
+
+        public void DeactivateSelectTool()
+        {
+            // This is called by the tool after a successful click
+            IsSelectToolActive = false;
         }
 
         #endregion

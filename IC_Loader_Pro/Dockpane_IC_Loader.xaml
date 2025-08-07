@@ -156,13 +156,21 @@
                     </Style>
                 </StackPanel.Resources>
 
-                <Button Command="{Binding ActivateSelectToolCommand}"                        
+                <!--<Button Command="{Binding ActivateSelectToolCommand}"                        
                     ToolTip="Activate tool to select shapes on the map"
                     Height="24">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="Select Shape" Margin="5,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                </Button>
+                </Button>-->
+
+              <ToggleButton Style="{DynamicResource Esri_ButtonToggle}" 
+              Margin="10"
+              Content="Select Shape"
+              IsChecked="{Binding IsSelectToolActive}"
+              ToolTip="Activate tool to select shapes on the map"
+              Height="24"/>
+
 
                 <Button Command="{Binding ZoomToAllCommand}" ToolTip="Zoom to all shapes in both lists">
                     <TextBlock Text="Zoom to All" TextWrapping="Wrap" TextAlignment="Center"/>

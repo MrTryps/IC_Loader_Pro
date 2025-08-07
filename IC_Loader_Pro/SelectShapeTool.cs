@@ -20,7 +20,7 @@ namespace IC_Loader_Pro
         public SelectShapeTool()
         {
             // Set a standard arrow cursor for the tool.
-            Cursor = Cursors.Arrow;
+            Cursor = Cursors.Cross;
         }
 
         /// <summary>
@@ -28,6 +28,7 @@ namespace IC_Loader_Pro
         /// </summary>
         protected override Task OnToolActivateAsync(bool hasMapViewChanged)
         {
+            Cursor = Cursors.Cross;
             Log.RecordMessage("SelectShapeTool has been ACTIVATED.", BIS_Log.BisLogMessageType.Note);
             return base.OnToolActivateAsync(hasMapViewChanged);
         }
@@ -112,13 +113,13 @@ namespace IC_Loader_Pro
                 {
                     Log.RecordMessage($"SUCCESS: Found intersecting element with Name: '{topElement.Name}'", BIS_Log.BisLogMessageType.Note);
                     pane.SelectShapeFromTool(topElement.Name);
-                    // pane.DeactivateSelectTool();
+                    pane.DeactivateSelectTool();
                     FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
                 }
                 else
                 {
                     Log.RecordMessage("INFO: Spatial query ran, but no intersecting element was found.", BIS_Log.BisLogMessageType.Note);
-                    //  pane.DeactivateSelectTool();
+                    pane.DeactivateSelectTool();
                     FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
                 }
             });

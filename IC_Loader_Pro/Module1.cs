@@ -1,7 +1,11 @@
-﻿using ArcGIS.Desktop.Framework;
+﻿using ArcGIS.Desktop.Core.Events;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
 using IC_Rules_2025;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 
@@ -145,7 +149,8 @@ namespace IC_Loader_Pro
                 System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
                 _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
             }
-          
+
+            ProjectClosingEvent.Subscribe(OnProjectClosing);
 
             // Return a completed task.
             return true;
@@ -159,6 +164,39 @@ namespace IC_Loader_Pro
         {
             // Add any cleanup logic here if needed.
             return true;
+        }
+
+        /// <summary>
+        /// Called just before the project closes.
+        /// </summary>
+        private Task OnProjectClosing(ProjectClosingEventArgs arg)
+        {
+            // All map modifications must be run on the main thread via QueuedTask.
+            return QueuedTask.Run(() =>
+            {
+                // Get the active map if it exists.
+                var activeMap = MapView.Active?.Map;
+                if (activeMap == null)
+                {
+                    return; // No active map, nothing to clear.
+                }
+
+                Log.RecordMessage("Project closing. Clearing graphics layers...", BIS_Log.BisLogMessageType.Note);
+
+                // Find and clear the main shapes layer
+                var drawLayer = activeMap.FindLayers("IC Loader Shapes").FirstOrDefault() as GraphicsLayer;
+                if (drawLayer != null)
+                {
+                    drawLayer.RemoveElements();
+                }
+
+                // Find and clear the highlight layer
+                var highlightLayer = activeMap.FindLayers("IC Loader Highlight").FirstOrDefault() as GraphicsLayer;
+                if (highlightLayer != null)
+                {
+                    highlightLayer.RemoveElements();
+                }
+            });
         }
 
         #endregion Overrides

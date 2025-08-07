@@ -1,4 +1,5 @@
-﻿using System;
+﻿using IC_Loader_Pro.Models;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -45,7 +46,7 @@ namespace IC_Loader_Pro
                     ViewModel.SelectedShapesForReview.Clear();
                 }
             }
-        }
+        }       
     }
 }
 //System.Windows.Markup.XamlParseException: ''Provide value on 'System.Windows.Baml2006.TypeConverterMarkupExtension' threw an exception.' Line number '47' and line position '43'.'
