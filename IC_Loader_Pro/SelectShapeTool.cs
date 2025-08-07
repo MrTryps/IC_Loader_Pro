@@ -53,76 +53,98 @@ namespace IC_Loader_Pro
             }
         }
 
-        /// <summary>
-        /// Overrides the mouse down event to perform a spatial query.
-        /// </summary>
         protected override Task HandleMouseDownAsync(MapViewMouseButtonEventArgs e)
         {
-            Log.RecordMessage("HandleMouseDownAsync triggered.", BIS_Log.BisLogMessageType.Note);
-            // We only care about the left mouse button.
-            //if (e.ChangedButton != MouseButton.Left)
-            //{
-            //    return Task.CompletedTask;
-            //}
-            //Log.RecordMessage("Left button triggered.", BIS_Log.BisLogMessageType.Note);
+            if (e.ChangedButton != MouseButton.Left) // if (e.ChangedButton != MouseButton.Left || e.Action != MouseButton.Down
+                return Task.CompletedTask;
+
             var pane = FrameworkApplication.DockPaneManager.Find(Dockpane_IC_LoaderViewModel.DockPaneId) as Dockpane_IC_LoaderViewModel;
             if (pane == null)
                 return Task.CompletedTask;
 
+            // Check if the Control key is held down BEFORE the QueuedTask.
+            bool isCtrlKeyDown = (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl));
+
             return QueuedTask.Run(() =>
             {
-                
+                Log.RecordMessage("HandleMouseDownAsync triggered in SelectShapeTool.", BIS_Log.BisLogMessageType.Note);
+
                 var graphicsLayer = pane.GetGraphicsLayer();
-                if (graphicsLayer == null)
-                {
-                    Log.RecordMessage("Could not get graphics layer from ViewModel.", BIS_Log.BisLogMessageType.Note);
-                    return;
+                if (graphicsLayer == null) return;
 
-                }
-
-                // 1. Convert the screen point to a map point.
                 MapPoint mapPoint = MapView.Active.ClientToMap(e.ClientPoint);
-                if (mapPoint == null)
-                {
-                    Log.RecordMessage("Could not convert click point to map point.", BIS_Log.BisLogMessageType.Note);
-                    return;
-                }
+                if (mapPoint == null) return;
 
-                // 2. Define a small search tolerance in map units.
-                //    This makes it easier for the user to click a shape.
-                double searchTolerance = 5.0; //MapView.Active.Extent.Width / 1000;
+                double searchTolerance = MapView.Active.Extent.Width / 1000;
                 Polygon searchBuffer = GeometryEngine.Instance.Buffer(mapPoint, searchTolerance) as Polygon;
 
-                // 3. Find the first element whose geometry intersects our search buffer.
                 var topElement = graphicsLayer.GetElements()
-             .OfType<GraphicElement>()
-             .FirstOrDefault(graphicElement =>
-             {
-                 // Get the base CIMGraphic
-                 var cimGraphic = graphicElement.GetGraphic();
-                 // Cast it to the specific type for polygons
-                 var polygonGraphic = cimGraphic as CIMPolygonGraphic;
-                 if (polygonGraphic == null)
-                     return false; // It's not a polygon, so we can't test it.
-
-                 // Now, perform the intersect test on the .Polygon property
-                 return GeometryEngine.Instance.Intersects(polygonGraphic.Polygon, searchBuffer);
-             });
+                    .OfType<GraphicElement>()
+                    .FirstOrDefault(graphicElement =>
+                    {
+                        var polygonGraphic = graphicElement.GetGraphic() as CIMPolygonGraphic;
+                        if (polygonGraphic == null) return false;
+                        return GeometryEngine.Instance.Intersects(polygonGraphic.Polygon, searchBuffer);
+                    });
 
                 if (topElement != null)
                 {
-                    Log.RecordMessage($"SUCCESS: Found intersecting element with Name: '{topElement.Name}'", BIS_Log.BisLogMessageType.Note);
-                    pane.SelectShapeFromTool(topElement.Name);
-                    pane.DeactivateSelectTool();
-                    FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
+                    if (isCtrlKeyDown)
+                    {
+                        // If Ctrl is down, toggle the selection and keep the tool active.
+                        Log.RecordMessage($"SUCCESS: Toggling selection for element '{topElement.Name}'.", BIS_Log.BisLogMessageType.Note);
+                        pane.ToggleShapeSelectionFromTool(topElement.Name);
+                    }
+                    else
+                    {
+                        // If Ctrl is NOT down, replace the selection.
+                        Log.RecordMessage($"SUCCESS: Setting selection to element '{topElement.Name}'.", BIS_Log.BisLogMessageType.Note);
+                        pane.SelectShapeFromTool(topElement.Name);
+
+                        // ** ADDED LOGIC: Deactivate the tool after a single selection. **
+                        Log.RecordMessage("Single selection complete. Deactivating tool.", BIS_Log.BisLogMessageType.Note);
+                        pane.DeactivateSelectTool();
+                    }
                 }
                 else
                 {
-                    Log.RecordMessage("INFO: Spatial query ran, but no intersecting element was found.", BIS_Log.BisLogMessageType.Note);
-                    pane.DeactivateSelectTool();
-                    FrameworkApplication.SetCurrentToolAsync("esri_mapping_exploreTool");
+                    Log.RecordMessage("INFO: No intersecting element was found at the clicked point.", BIS_Log.BisLogMessageType.Note);
                 }
             });
+        }
+
+        /// <summary>
+        /// This synchronous method is called first for any key up event.
+        /// We set args.Handled = true to indicate that we want to take control
+        /// and that the framework should now call HandleKeyUpAsync.
+        /// </summary>
+        protected override void OnToolKeyUp(MapViewKeyEventArgs args)
+        {
+            // We only care about the Ctrl keys.
+            if (args.Key == Key.LeftCtrl || args.Key == Key.RightCtrl)
+            {
+                args.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// Overrides the key up event. If the user releases the Control key,
+        /// we will deactivate this tool and revert to the default explore tool.
+        /// </summary>
+        protected override Task HandleKeyUpAsync(MapViewKeyEventArgs e)
+        {         
+            Log.RecordMessage("Ctrl key released, deactivating SelectShapeTool.", BIS_Log.BisLogMessageType.Note);
+
+            // Find our dockpane
+            var pane = FrameworkApplication.DockPaneManager.Find(Dockpane_IC_LoaderViewModel.DockPaneId) as Dockpane_IC_LoaderViewModel;
+            if (pane != null)
+            {
+                // Tell the ViewModel to deactivate the tool. This will un-check the
+                // toggle button and cause the explore tool to become active.
+                pane.DeactivateSelectTool();
+            }
+            
+            return base.HandleKeyUpAsync(e);
         }
     }
 }

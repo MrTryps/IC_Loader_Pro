@@ -600,6 +600,46 @@ namespace IC_Loader_Pro
             IsSelectToolActive = false;
         }
 
+        public void ToggleShapeSelectionFromTool(string elementName)
+        {
+            if (int.TryParse(elementName, out int refId))
+            {
+                var shapeToToggle = _shapesToReview.FirstOrDefault(s => s.ShapeReferenceId == refId) ??
+                                    _selectedShapes.FirstOrDefault(s => s.ShapeReferenceId == refId);
+
+                if (shapeToToggle != null)
+                {
+                    FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (_shapesToReview.Contains(shapeToToggle))
+                        {
+                            // Logic for the "ToReview" list
+                            if (SelectedShapesForReview.Contains(shapeToToggle))
+                            {
+                                SelectedShapesForReview.Remove(shapeToToggle);
+                            }
+                            else
+                            {
+                                SelectedShapesForReview.Add(shapeToToggle);
+                            }
+                        }
+                        else if (_selectedShapes.Contains(shapeToToggle))
+                        {
+                            // Logic for the "ToUse" list
+                            if (SelectedShapesToUse.Contains(shapeToToggle))
+                            {
+                                SelectedShapesToUse.Remove(shapeToToggle);
+                            }
+                            else
+                            {
+                                SelectedShapesToUse.Add(shapeToToggle);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
         #endregion
     }
 }
