@@ -168,6 +168,8 @@ namespace IC_Loader_Pro
             ZoomToSiteCommand = new RelayCommand(async () => await OnZoomToSiteAsync(),() => _currentSiteLocation != null);
             ClearSelectionCommand = new RelayCommand(OnClearSelection,() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
             ActivateSelectToolCommand = new RelayCommand(ActivateSelectTool);
+            HideSelectionCommand = new RelayCommand(async () => await OnHideSelectionAsync(),() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
+            UnhideAllCommand = new RelayCommand(async () => await OnUnhideAllAsync());
         }
         #endregion
      
@@ -639,6 +641,45 @@ namespace IC_Loader_Pro
                 }
             }
         }
+
+        /// <summary>
+        /// Sets the IsHidden flag on all currently selected shapes and redraws the map.
+        /// </summary>
+        private async Task OnHideSelectionAsync()
+        {
+            // Combine the selected items from both lists
+            var itemsToHide = SelectedShapesForReview.OfType<ShapeItem>()
+                                .Concat(SelectedShapesToUse.OfType<ShapeItem>()).ToList();
+
+            foreach (var item in itemsToHide)
+            {
+                item.IsHidden = true;
+            }
+
+            // Clear the selection from the UI
+            SelectedShapesForReview.Clear();
+            SelectedShapesToUse.Clear();
+
+            // Redraw the map to reflect the changes
+            await RedrawAllShapesOnMapAsync();
+        }
+
+        /// <summary>
+        /// Clears the IsHidden flag on ALL shapes and redraws the map.
+        /// </summary>
+        private async Task OnUnhideAllAsync()
+        {
+            // Combine all items from both lists
+            var allItems = _shapesToReview.Concat(_selectedShapes);
+            foreach (var item in allItems)
+            {
+                item.IsHidden = false;
+            }
+            await RedrawAllShapesOnMapAsync();
+        }
+
+
+
 
         #endregion
     }

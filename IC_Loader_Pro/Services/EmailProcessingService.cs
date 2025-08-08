@@ -305,7 +305,7 @@ namespace IC_Loader_Pro.Services
                     if (foundLocation == null)
                     {
                         // The PrefID is valid but has no matching coordinates.
-                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdWithCoordsInSubjectLine", "", IcTestResult.TestType.Deliverable);
                         prefIdTestResult.Comments.Add($"PrefID '{prefId}' is valid but has no coordinates in the database.");
                         prefIdTestResult.Passed = false;
                     }

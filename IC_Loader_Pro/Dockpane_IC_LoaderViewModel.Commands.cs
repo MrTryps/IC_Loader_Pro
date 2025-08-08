@@ -46,6 +46,8 @@ namespace IC_Loader_Pro
         public ICommand ZoomToSelectedUseShapeCommand { get; private set; }
         public ICommand ZoomToSiteCommand { get; private set; }
         public ICommand ActivateSelectToolCommand { get; private set; }
+        public ICommand HideSelectionCommand { get; private set; }
+        public ICommand UnhideAllCommand { get; private set; }
 
         #endregion
 

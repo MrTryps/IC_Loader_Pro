@@ -442,41 +442,17 @@ namespace IC_Loader_Pro
 
                 foreach (var shapeItem in _shapesToReview)
                 {
-                    if (shapeItem.Geometry != null)
+                    if (shapeItem.Geometry != null && !shapeItem.IsHidden)
                     {
                          graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
-                        //var newElement = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
-                        //var attributes = new Dictionary<string, object>
-                        //{
-                        //    { "ShapeRefID", shapeItem.ShapeReferenceId }
-                        //};
-                        //var graphic = new CIMPolygonGraphic
-                        //{
-                        //    Polygon = shapeItem.Geometry,
-                        //    Symbol = reviewSymbol.MakeSymbolReference(), // Use MakeSymbolReference()
-                        //    Attributes = attributes
-                        //};
-                        //graphicsLayer.AddElement(graphic);
                     }
                 }
 
                 foreach (var shapeItem in _selectedShapes)
                 {
-                    if (shapeItem.Geometry != null)
+                    if (shapeItem.Geometry != null && !shapeItem.IsHidden)
                     {
                          graphicsLayer.AddElement(shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
-                        //var newElement = ElementFactory.Instance.CreateGraphicElement(graphicsLayer, shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
-                        //var attributes = new Dictionary<string, object>
-                        //{
-                        //    { "ShapeRefID", shapeItem.ShapeReferenceId }
-                        //};
-                        //var graphic = new CIMPolygonGraphic
-                        //{
-                        //    Polygon = shapeItem.Geometry,
-                        //    Symbol = useSymbol.MakeSymbolReference(), // Use MakeSymbolReference()
-                        //    Attributes = attributes
-                        //};
-                        //graphicsLayer.AddElement(graphic);
                     }              
                 }
 

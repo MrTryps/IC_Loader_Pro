@@ -21,6 +21,13 @@ namespace IC_Loader_Pro.Models
             set => SetProperty(ref _isSelectedForUse, value);
         }
 
+        private bool _isHidden = false;
+        public bool IsHidden
+        {
+            get => _isHidden;
+            set => SetProperty(ref _isHidden, value);
+        }
+
         // --- Core Shape Properties ---
         public int ShapeReferenceId { get; set; } // The original OBJECTID
         public Polygon Geometry { get; set; }
