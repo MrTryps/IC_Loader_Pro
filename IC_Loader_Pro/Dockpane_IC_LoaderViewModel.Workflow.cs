@@ -250,44 +250,46 @@ namespace IC_Loader_Pro
                 EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesAsync);
 
                 _currentEmailTestResult = processingResult.TestResult;
-               // UpdateQueueStats(_currentEmailTestResult);
 
-                if (!_currentEmailTestResult.Passed)
+                switch (_currentEmailTestResult.CumulativeAction.ResultAction)
                 {
-                    shouldAutoAdvance = true; // Mark for advancement
-                    ShowTestResultWindow(_currentEmailTestResult);
-                    return; // Exit try block
-                }
-
-                // --- On Success, Populate UI and Wait for User Input ---
-                if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
-                {
-                    await RunOnUIThread(() =>
-                    {
-                        _foundFileSets.Clear();
-                        foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                    case TestActionResponse.Pass:
+                        // Success: Populate UI and wait for user input
+                        if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
                         {
-                            _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
+                            await RunOnUIThread(() =>
+                            {
+                                _foundFileSets.Clear();
+                                foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                                {
+                                    _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
+                                }
+                            });
                         }
-                    });
-
-                if (processingResult.ShapeItems?.Any() == true)
-                {
-                    await RunOnUIThread(() =>
-                    {
-                        _shapesToReview.Clear();
-                        foreach (var shape in processingResult.ShapeItems)
+                        if (processingResult.ShapeItems?.Any() == true)
                         {
-                            _shapesToReview.Add(shape);
+                            await RunOnUIThread(() =>
+                            {
+                                _shapesToReview.Clear();
+                                foreach (var shape in processingResult.ShapeItems) { _shapesToReview.Add(shape); }
+                            });
+                            await RedrawAllShapesOnMapAsync();
+                            await ZoomToAllAndSiteAsync();
                         }
-                    });
-                    await RedrawAllShapesOnMapAsync();
-                    await ZoomToAllAndSiteAsync();
-                    }
+                        StatusMessage = "Ready for review.";
+                        IsEmailActionEnabled = true;
+                        break;
 
+                    case TestActionResponse.Note:
+                    case TestActionResponse.Manual:
+                    case TestActionResponse.Fail:
+                    default:
+                        // Any non-passing result will auto-advance to the next email
+                        shouldAutoAdvance = true;
+                        UpdateQueueStats(_currentEmailTestResult); // Update stats based on failure type
+                        ShowTestResultWindow(_currentEmailTestResult);
+                        return;
                 }
-                StatusMessage = "Ready for review.";
-                IsEmailActionEnabled = true;
             }
             catch (Exception ex)
             {

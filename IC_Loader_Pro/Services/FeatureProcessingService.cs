@@ -58,7 +58,7 @@ namespace IC_Loader_Pro.Services
                 if (!shapesFromFile.Any())
                 {
                     // If the file was empty or unreadable, continue to the next fileset.
-                    IcTestResult noShapesFound = _namedTests.returnNewTestResult("GIS_No_Shapes_Found","", IcTestResult.TestType.Submission);
+                    IcTestResult noShapesFound = _namedTests.returnNewTestResult("GIS_No_Shapes_Found",fileset.fileName, IcTestResult.TestType.Submission);
                     noShapesFound.Passed = false;
                     rootTestResult.AddSubordinateTestResult(noShapesFound);
                     continue;
@@ -125,7 +125,7 @@ namespace IC_Loader_Pro.Services
                     if (projectedGeometry != null)
                     {
                         shapeToValidate.Geometry = projectedGeometry as Polygon; // Update the geometry
-                        _log.RecordMessage($"Shape {shapeToValidate.ShapeReferenceId} was reprojected to NJ State Plane.", BisLogMessageType.Note);
+                       // _log.RecordMessage($"Shape {shapeToValidate.ShapeReferenceId} was reprojected to NJ State Plane.", BisLogMessageType.Note);
                         geometry = shapeToValidate.Geometry;
                     }
                     else
@@ -204,7 +204,6 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Area Below Minimum";
                 recordShapeCheckFailure("Area Below Minimum");
-                return;
             }
 
             // 7.  Check if the shape is within the allowed extent ---
@@ -217,7 +216,6 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Outside Allowable Extent";
                 recordShapeCheckFailure("Outside Allowable Extent");
-                return;
             }
 
             // 8. Check the distance from the site, if a site location was provided.
@@ -236,7 +234,6 @@ namespace IC_Loader_Pro.Services
                     shapeToValidate.IsValid = false;
                     shapeToValidate.Status = "Exceeds Max Distance from Site";
                     recordShapeCheckFailure("Outside Allowable Extent");
-                    return;
                 }
             }
 

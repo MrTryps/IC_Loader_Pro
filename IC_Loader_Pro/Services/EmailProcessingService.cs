@@ -136,9 +136,8 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
-            if (!attachmentAnalysis.TestResult.Passed)
+            if (attachmentAnalysis.TestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
             {
-                rootTestResult.Passed = false;
                 HandleRejection(outlookApp, rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
@@ -156,7 +155,12 @@ namespace IC_Loader_Pro.Services
 
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
             List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, rootTestResult);
-            _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);            
+            _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);
+            if (!foundShapes.Any())
+            {
+                rootTestResult.Passed = false;
+                rootTestResult.AddComment("The submission contained GIS files, but no readable polygon features were found within them.");
+            }
 
             await Task.CompletedTask;
 
