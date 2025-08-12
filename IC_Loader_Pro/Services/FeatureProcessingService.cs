@@ -1,5 +1,6 @@
 ﻿using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
@@ -38,7 +39,7 @@ namespace IC_Loader_Pro.Services
         /// </summary>
         /// <param name="validFilesets">The list of valid filesets identified from the email attachments.</param>
         /// <returns>A list of ShapeItem objects ready for UI display and user review.</returns>
-        public async Task<List<ShapeItem>> AnalyzeFeaturesFromFilesetsAsync(List<fileset> identifiedFileSets, string icType, MapPoint siteLocation)
+        public async Task<List<ShapeItem>> AnalyzeFeaturesFromFilesetsAsync(List<fileset> identifiedFileSets, string icType, MapPoint siteLocation, IcTestResult rootTestResult)
         {
             _log.RecordMessage($"Starting feature analysis for {identifiedFileSets.Count} submitted fileset(s)...", BIS_Log.BisLogMessageType.Note);
             var allAnalyzedShapes = new List<ShapeItem>();
@@ -52,11 +53,14 @@ namespace IC_Loader_Pro.Services
             foreach (var fileset in identifiedFileSets.Where(fs => fs.validSet))
             {
                 // 1. Read all the raw features from the current fileset (e.g., a shapefile).
-                List<ShapeItem> shapesFromFile = await ReadFeaturesFromFileAsync(fileset, icType);
+                List<ShapeItem> shapesFromFile = await ReadFeaturesFromFileAsync(fileset, icType, rootTestResult);
 
                 if (!shapesFromFile.Any())
                 {
                     // If the file was empty or unreadable, continue to the next fileset.
+                    IcTestResult noShapesFound = _namedTests.returnNewTestResult("GIS_No_Shapes_Found","", IcTestResult.TestType.Submission);
+                    noShapesFound.Passed = false;
+                    rootTestResult.AddSubordinateTestResult(noShapesFound);
                     continue;
                 }
 
@@ -65,7 +69,7 @@ namespace IC_Loader_Pro.Services
                 {
                     // This method will perform all the checks (projection, self-intersection, area, etc.)
                     // and update the shapeItem's IsValid and Status properties.
-                    ValidateShape(shapeItem, icType, siteLocation);
+                    ValidateShape(shapeItem, icType, siteLocation, rootTestResult);
 
                     // Add the fully analyzed shape to our master list.
                     allAnalyzedShapes.Add(shapeItem);
@@ -76,12 +80,22 @@ namespace IC_Loader_Pro.Services
             return allAnalyzedShapes;
         }
 
-        private void ValidateShape(ShapeItem shapeToValidate, string icType, MapPoint siteLocation)
+        private void ValidateShape(ShapeItem shapeToValidate, string icType, MapPoint siteLocation, IcTestResult parentTestResult)
         {
+            Action<string> recordShapeCheckFailure = (failureReason) =>
+            {
+                var shapeCheckTest = _namedTests.returnNewTestResult("GIS_ShapeCheck", shapeToValidate.SourceFile, IcTestResult.TestType.Shape);
+                shapeCheckTest.Passed = false;
+                shapeCheckTest.AddComment($"Shape with original ID {shapeToValidate.ShapeReferenceId} failed validation: {failureReason}");
+                parentTestResult.AddSubordinateTestResult(shapeCheckTest);
+                parentTestResult.Passed = false;
+            };
+
             if (shapeToValidate?.Geometry == null)
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Missing Geometry";
+                recordShapeCheckFailure("Shape feature was found, but its geometry is null.");
                 return;
             }
 
@@ -91,6 +105,7 @@ namespace IC_Loader_Pro.Services
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Missing Geometry Rules";
+                recordShapeCheckFailure($"Could not find Geometry Rules for the IC Type '{icType}'.");
                 return;
             }
 
@@ -99,21 +114,27 @@ namespace IC_Loader_Pro.Services
             // 1: Check and Reproject Spatial Reference ---
             // We will use the WKID for NAD 1983 State Plane New Jersey FIPS 2900 (US Feet).
             // The modern WKID is 102711 (the older one was 2260).
-            var njspfSr = SpatialReferenceBuilder.CreateSpatialReference(2260);
-            if (geometry.SpatialReference == null || !geometry.SpatialReference.IsEqual(njspfSr))
+            //var njspfSr = SpatialReferenceBuilder.CreateSpatialReference(2260);
+            var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
+            if (geometry.SpatialReference == null || !geometry.SpatialReference.IsEqual(requiredSr))
             {
                 try
                 {
                     // If not, reproject it.
-                    var projectedGeometry = GeometryEngine.Instance.Project(geometry, njspfSr);
+                    var projectedGeometry = GeometryEngine.Instance.Project(geometry, requiredSr);
                     if (projectedGeometry != null)
                     {
                         shapeToValidate.Geometry = projectedGeometry as Polygon; // Update the geometry
                         _log.RecordMessage($"Shape {shapeToValidate.ShapeReferenceId} was reprojected to NJ State Plane.", BisLogMessageType.Note);
+                        geometry = shapeToValidate.Geometry;
                     }
                     else
                     {
-                        throw new Exception("Projection returned a null geometry.");
+                        shapeToValidate.IsValid = false;
+                        shapeToValidate.Status = "Projection returned a null geometry";
+                        recordShapeCheckFailure("Projection returned a null geometry.");
+                        return;
+                        //throw new Exception("Projection returned a null geometry.");
                     }
                 }
                 catch (Exception ex)
@@ -121,6 +142,7 @@ namespace IC_Loader_Pro.Services
                     _log.RecordError($"Failed to reproject geometry for shape {shapeToValidate.ShapeReferenceId}.", ex, "ValidateShape");
                     shapeToValidate.IsValid = false;
                     shapeToValidate.Status = "Reprojection Failed";
+                    recordShapeCheckFailure($"The shape failed to reproject to the required coordinate system (NJ State Plane).");
                     return; // Stop validation if reprojection fails.
                 }
             }
@@ -130,6 +152,7 @@ namespace IC_Loader_Pro.Services
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = $"Invalid Type: {geometry.GeometryType}";
+                recordShapeCheckFailure($"Incorrect geometry type. Expected Polygon, but found {geometry.GeometryType}.");
                 return;
             }
 
@@ -138,31 +161,36 @@ namespace IC_Loader_Pro.Services
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Empty Geometry";
+                recordShapeCheckFailure("The shape's geometry is empty.");
                 return;
             }
 
-            // 4. Check and correct the spatial reference (projection)
-            var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
-            if (!geometry.SpatialReference.IsEqual(requiredSr))
-            {
-                try
-                {
-                    geometry = (Polygon)GeometryEngine.Instance.Project(geometry, requiredSr);
-                    shapeToValidate.Geometry = geometry as Polygon; // Update the geometry
-                }
-                catch (Exception ex)
-                {
-                    _log.RecordError("Failed to reproject geometry.", ex, "ValidateShape");
-                    shapeToValidate.IsValid = false;
-                    shapeToValidate.Status = "Reprojection Failed";
-                    return;
-                }
-            }
+            //// 4. Check and correct the spatial reference (projection)
+            //var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
+            //if (!geometry.SpatialReference.IsEqual(requiredSr))
+            //{
+            //    try
+            //    {
+            //        geometry = (Polygon)GeometryEngine.Instance.Project(geometry, requiredSr);
+            //        shapeToValidate.Geometry = geometry as Polygon; // Update the geometry
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        _log.RecordError("Failed to reproject geometry.", ex, "ValidateShape");
+            //        shapeToValidate.IsValid = false;
+            //        shapeToValidate.Status = "Reprojection Failed";
+            //        return;
+            //    }
+            //}
 
             // 5. Check for self-intersection and simplify if necessary (the modern way)
             // The GeometryEngine's SimplifyAsFeature method can fix many common geometry errors.
             if (!GeometryEngine.Instance.IsSimpleAsFeature(geometry))
             {
+                var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", shapeToValidate.SourceFile, IcTestResult.TestType.Shape);
+                repairTest.Passed = true;
+                repairTest.AddComment($"Geometry error found in shape with original ID {shapeToValidate.ShapeReferenceId}. The geometry was automatically repaired.");
+                parentTestResult.AddSubordinateTestResult(repairTest);
                 geometry = (Polygon)GeometryEngine.Instance.SimplifyAsFeature(geometry, true); // true = allow endpoint changes
                 shapeToValidate.Geometry = geometry as Polygon; // Update the geometry
                 shapeToValidate.Status = "Repaired (Simplified)";
@@ -175,6 +203,7 @@ namespace IC_Loader_Pro.Services
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Area Below Minimum";
+                recordShapeCheckFailure("Area Below Minimum");
                 return;
             }
 
@@ -187,6 +216,7 @@ namespace IC_Loader_Pro.Services
             {
                 shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Outside Allowable Extent";
+                recordShapeCheckFailure("Outside Allowable Extent");
                 return;
             }
 
@@ -205,6 +235,8 @@ namespace IC_Loader_Pro.Services
                 {
                     shapeToValidate.IsValid = false;
                     shapeToValidate.Status = "Exceeds Max Distance from Site";
+                    recordShapeCheckFailure("Outside Allowable Extent");
+                    return;
                 }
             }
 
@@ -223,82 +255,81 @@ namespace IC_Loader_Pro.Services
         /// <param name="fileset">The fileset to read from.</param>
         /// <param name="icType">The IC Type being processed, to get the correct fields to mine.</param>
         /// <returns>A list of ShapeItem objects, one for each feature in the file.</returns>
-        private async Task<List<ShapeItem>> ReadFeaturesFromFileAsync(fileset fileset, string icType)
+        private async Task<List<ShapeItem>> ReadFeaturesFromFileAsync(fileset fileset, string icType, IcTestResult parentTestResult)
         {
             var shapesInFile = new List<ShapeItem>();
-            _log.RecordMessage($"Reading features from file: {fileset.fileName}", BIS_Log.BisLogMessageType.Note);
+            _log.RecordMessage($"Reading features from file: {fileset.fileName} (Type: {fileset.filesetType})", BIS_Log.BisLogMessageType.Note);
 
             // This entire block of GIS code MUST run on the ArcGIS Pro background thread (MCT).
             await QueuedTask.Run(() =>
             {
-                // Construct the full path to the .shp file
                 string shpPath = Path.Combine(fileset.path, fileset.fileName + ".shp");
-
-                if (!File.Exists(shpPath))
-                {
-                    _log.RecordError($"Shapefile not found at expected path: {shpPath}", null, "ReadFeaturesFromFileAsync");
-                    return; // Exit if the shapefile doesn't exist
-                }
-
                 try
                 {
-                    // The ArcGIS Pro SDK connects to a folder containing shapefiles as if it were a geodatabase.
-                    var connectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Shapefile);
-                    using (var datastore = new FileSystemDatastore(connectionPath))
-                    using (var featureClass = datastore.OpenDataset<FeatureClass>(fileset.fileName))
+                    switch (fileset.filesetType.ToLowerInvariant())
                     {
-                        if (featureClass == null) return;
+                        case "shapefile":
+                            // Construct the full path to the .shp file
 
-                        // Get the list of attribute fields we need to extract from the rules engine.
-                        var fieldsToMine = _rules.ReturnIcGisTypeSettings(icType)
-                                                 .FeatureFields
-                                                 .Where(f => f.DisplayInPreview)
-                                                 .Select(f => f.Fieldname)
-                                                 .ToList();
-
-                        // Use a QueryFilter to specify which fields we want to retrieve.
-                        var queryFilter = new QueryFilter { SubFields = "*" }; // For now, get all fields
-
-                        // Loop through each feature (row) in the feature class.
-                        using (var cursor = featureClass.Search(queryFilter, false))
-                        {
-                            while (cursor.MoveNext())
+                            if (!File.Exists(shpPath))
                             {
-                                using (var feature = cursor.Current as Feature)
-                                {
-                                    // We are only interested in Polygon features.
-                                    if (feature?.GetShape() is Polygon polygon)
-                                    {
-                                        var shapeItem = new ShapeItem
-                                        {
-                                            Geometry = polygon,
-                                            SourceFile = fileset.fileName,
-                                            ShapeReferenceId = (int)feature.GetObjectID(),
-                                            ShapeType = feature.GetShape().GeometryType.ToString(),
-                                            IsValid = true, // Assume valid for now; the ValidateShape method will check this later.
-                                            Status = "Pending Validation"
-                                        };
+                                _log.RecordError($"Shapefile not found at expected path: {shpPath}", null, "ReadFeaturesFromFileAsync");
+                                return; // Exit if the shapefile doesn't exist
+                            }
 
-                                        // Extract the attribute values for the "fields to mine".
-                                        foreach (string fieldName in fieldsToMine)
-                                        {
-                                            int fieldIndex = feature.FindField(fieldName);
-                                            if (fieldIndex != -1)
-                                            {
-                                                shapeItem.Attributes[fieldName] = feature[fieldIndex];
-                                            }
-                                        }
-                                        shapesInFile.Add(shapeItem);
-                                    }
+                            // The ArcGIS Pro SDK connects to a folder containing shapefiles as if it were a geodatabase.
+                            var connectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Shapefile);
+                            using (var datastore = new FileSystemDatastore(connectionPath))
+                            using (var featureClass = datastore.OpenDataset<FeatureClass>(fileset.fileName))                                
+                            {
+                                shapesInFile = ExtractShapesFromFeatureClass(featureClass, fileset, icType);
+                            }
+                            break;
+                        case "dwg":
+                            string dwgFilePath = Path.Combine(fileset.path, fileset.fileName + ".dwg");
+                            if (!File.Exists(dwgFilePath))
+                            {
+                                _log.RecordError($"DWG file not found at expected path: {dwgFilePath}", null, "ReadFeaturesFromFileAsync");
+                                fileset.validSet = false;
+                                return;
+                            }
+
+                            // 1. Connect to the FOLDER containing the CAD file
+                            var cadConnectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Cad);
+                            using (var cadDatastore = new FileSystemDatastore(cadConnectionPath))
+                            {
+                                // 2. Construct the specific name for the polygon layer within the DWG
+                                string polygonFeatureClassName = $"{fileset.fileName}.dwg:Polygon";
+
+                                // 3. Open the specific polygon feature class
+                                using (var featureClass = cadDatastore.OpenDataset<FeatureClass>(polygonFeatureClassName))
+                                {
+                                    shapesInFile = ExtractShapesFromFeatureClass(featureClass, fileset, icType);
                                 }
                             }
-                        }
+                            break;
+
+                        default:
+                            _log.RecordMessage($"File type '{fileset.filesetType}' is not supported for feature extraction.", BisLogMessageType.Warning);
+                            fileset.validSet = false;
+                            break;
                     }
+                }
+                catch (InvalidOperationException ex) // Catch the specific error for corrupt files
+                {
+                    _log.RecordError($"An error occurred while trying to open '{shpPath}'. The fileset may be corrupt or not a valid feature class. It will be flagged as invalid.", ex, "ReadFeaturesFromFileAsync");
+                    fileset.validSet = false;
+                    var unreadableTest = _namedTests.returnNewTestResult("GIS_FileReadable", fileset.fileName, IcTestResult.TestType.Submission);
+                    unreadableTest.Passed = false;
+                    unreadableTest.AddComment($"The dataset '{fileset.fileName}' could not be opened. It may be corrupt.");
+                    parentTestResult.AddSubordinateTestResult(unreadableTest);
+                    parentTestResult.Passed = false;
                 }
                 catch (Exception ex)
                 {
                     _log.RecordError($"An unexpected error occurred while reading features from '{shpPath}'.", ex, "ReadFeaturesFromFileAsync");
-                    // In a real-world scenario, you might create a "failed" ShapeItem here to notify the user.
+                    fileset.validSet = false;
+                    
                 }
             });
 
@@ -306,19 +337,57 @@ namespace IC_Loader_Pro.Services
         }
 
         /// <summary>
-        /// (SHELL METHOD) Performs a series of validation checks on a single shape's geometry.
+        /// Extracts all polygon features from a given feature class and converts them to ShapeItem objects.
         /// </summary>
-        /// <param name="shapeToValidate">The ShapeItem to validate.</param>
-        private void ValidateShape(ShapeItem shapeToValidate)
+        private List<ShapeItem> ExtractShapesFromFeatureClass(FeatureClass featureClass, fileset sourceFileSet, string icType)
         {
-            // --- FUTURE LOGIC ---
-            // This method will contain all the business logic checks from your reference code:
-            // - Is it a polygon?
-            // - Is it empty?
-            // - Is it in the correct projection? (and reproject if not)
-            // - Is it self-intersecting?
-            // - Is its area above the minimum threshold?
-            // It will update the shapeToValidate.IsValid and shapeToValidate.Status properties.
+            var shapes = new List<ShapeItem>();
+            if (featureClass == null) return shapes;
+
+            // Get the list of attribute fields we need to extract from the rules engine.
+            var fieldsToMine = _rules.ReturnIcGisTypeSettings(icType)
+                                     .FeatureFields
+                                     .Where(f => f.DisplayInPreview)
+                                     .Select(f => f.Fieldname)
+                                     .ToList();
+
+            var queryFilter = new QueryFilter { SubFields = "*" }; // Get all fields
+
+            using (var cursor = featureClass.Search(queryFilter, false))
+            {
+                while (cursor.MoveNext())
+                {
+                    using (var feature = cursor.Current as Feature)
+                    {
+                        if (feature?.GetShape() is Polygon polygon)
+                        {
+                            var shapeItem = new ShapeItem
+                            {
+                                Geometry = polygon,
+                                SourceFile = sourceFileSet.fileName,
+                                ShapeReferenceId = (int)feature.GetObjectID(),
+                                ShapeType = feature.GetShape().GeometryType.ToString(),
+                                IsValid = true,
+                                Status = "Pending Validation"
+                            };
+
+                            // Extract the attribute values for the "fields to mine".
+                            foreach (string fieldName in fieldsToMine)
+                            {
+                                int fieldIndex = feature.FindField(fieldName);
+                                if (fieldIndex != -1)
+                                {
+                                    shapeItem.Attributes[fieldName] = feature[fieldIndex];
+                                }
+                            }
+                            shapes.Add(shapeItem);
+                        }
+                    }
+                }
+            }
+            return shapes;
         }
+
+
     }
 }

@@ -90,13 +90,16 @@ namespace IC_Loader_Pro.Services
                 string fullDestPath = finalType == EmailType.Spam ?
                 currentIcSetting.OutlookSpamFolderPath :
                 currentIcSetting.OutlookCorrespondenceFolderPath;
-                var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
-                bool moveSucceeded = outlookService.MoveEmailToFolder(
-           outlookApp,
-           emailToProcess.Emailid,
-           sourceFolderPath,
-           sourceStoreName,
-           destFolder);
+
+                string moveReason = $"Email identified as {finalType.Name}.";
+                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, fullDestPath, moveReason, emailToProcess.Subject);
+           //     var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
+           //     bool moveSucceeded = outlookService.MoveEmailToFolder(
+           //outlookApp,
+           //emailToProcess.Emailid,
+           //sourceFolderPath,
+           //sourceStoreName,
+           //destFolder);
                 rootTestResult.Passed = false;
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
@@ -107,7 +110,11 @@ namespace IC_Loader_Pro.Services
                 var correctIcSetting = _rules.ReturnIcGisTypeSettings(finalType.Name);
                 if (correctIcSetting != null)
                 {
-                    outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath);
+                    string reason = $"Email type '{finalType.Name}' does not match the selected queue '{selectedIcType}'.";
+                    NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath, reason, emailToProcess.Subject);
+
+
+                    // outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath);
                 }
                 rootTestResult.Passed = false;
                 return new EmailProcessingResult { TestResult = rootTestResult };
@@ -117,6 +124,17 @@ namespace IC_Loader_Pro.Services
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
             rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
+
+            if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
+            {
+                rootTestResult.Passed = false; // The overall process is not a "pass"
+                rootTestResult.Comments.Add("No attachments found. Treating as Correspondence.");
+
+                string reason = "Email contains no attachments to process.";
+                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
+
+                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+            }
 
             if (!attachmentAnalysis.TestResult.Passed)
             {
@@ -130,12 +148,14 @@ namespace IC_Loader_Pro.Services
             {
                 rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
-                outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath);
+                string reason = "No valid GIS datasets found in attachments.";
+                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
+                // outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
-            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation);
+            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, rootTestResult);
             _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);            
 
             await Task.CompletedTask;
@@ -322,6 +342,32 @@ namespace IC_Loader_Pro.Services
             return (prefIdTestResult, foundLocation);
         }
 
+        // In IC_Loader_Pro/Services/EmailProcessingService.cs
+
+        /// <summary>
+        /// Displays a notification to the user and then moves an email to a specified folder.
+        /// </summary>
+        private void NotifyAndMoveEmail(Outlook.Application outlookApp, string emailId, string sourceFolderPath, string sourceStoreName, string fullDestPath, string reason, string subject)
+        {
+            var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
+
+            // Show the notification to the user
+            string message = $"The following email will be automatically moved:\n\n" +
+                             $"Subject: {subject}\n" +
+                             $"Reason: {reason}\n" +
+                             $"Destination: {destFolder}";
+
+            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(message, "Automated Email Move", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+
+            // Move the email
+            _outlookService.MoveEmailToFolder(
+                outlookApp,
+                emailId,
+                sourceFolderPath,
+                sourceStoreName,
+                destFolder
+            );
+        }
 
 
         /// <summary>

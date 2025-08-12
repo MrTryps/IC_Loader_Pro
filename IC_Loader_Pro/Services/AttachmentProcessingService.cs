@@ -86,7 +86,6 @@ namespace IC_Loader_Pro.Services
                 TempFolderPath = folderToSearch
             };
 
-            // --- THIS IS THE NEW LOGIC ---
             // First, check if there was even a folder created.
             // The TempFolderPath will only be set if attachments existed to be saved.
             if (string.IsNullOrEmpty(folderToSearch))
@@ -120,6 +119,14 @@ namespace IC_Loader_Pro.Services
 
                 // Step 2: Identify logical GIS filesets from the entire folder content.
                 analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
+                foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
+                {
+                    var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
+                    incompleteTest.Passed = false; // This is a failing test.
+                    incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
+                    analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
+                    analysisResult.TestResult.Passed = false; // Mark the parent attachment test as failed.
+                }
 
 
                 // Step 3: Create a comprehensive list of all individual files.
