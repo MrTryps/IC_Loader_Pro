@@ -28,6 +28,12 @@ namespace IC_Loader_Pro.Models
             set => SetProperty(ref _isHidden, value);
         }
 
+        /// <summary>
+        /// A flag indicating that this shape's layer name matched a filter
+        /// and should be automatically moved to the 'use' list.
+        /// </summary>
+        public bool IsAutoSelected { get; set; } = false;
+
         // --- Core Shape Properties ---
         public int ShapeReferenceId { get; set; } // The original OBJECTID
         public Polygon Geometry { get; set; }

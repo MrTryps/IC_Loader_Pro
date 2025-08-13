@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using static BIS_Log;
 using Path = System.IO.Path;
 using QueryFilter = ArcGIS.Core.Data.QueryFilter;
+using System.Text.RegularExpressions;
 
 namespace IC_Loader_Pro.Services
 {
@@ -163,27 +164,9 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.Status = "Empty Geometry";
                 recordShapeCheckFailure("The shape's geometry is empty.");
                 return;
-            }
+            }            
 
-            //// 4. Check and correct the spatial reference (projection)
-            //var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
-            //if (!geometry.SpatialReference.IsEqual(requiredSr))
-            //{
-            //    try
-            //    {
-            //        geometry = (Polygon)GeometryEngine.Instance.Project(geometry, requiredSr);
-            //        shapeToValidate.Geometry = geometry as Polygon; // Update the geometry
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        _log.RecordError("Failed to reproject geometry.", ex, "ValidateShape");
-            //        shapeToValidate.IsValid = false;
-            //        shapeToValidate.Status = "Reprojection Failed";
-            //        return;
-            //    }
-            //}
-
-            // 5. Check for self-intersection and simplify if necessary (the modern way)
+            // 4. Check for self-intersection and simplify if necessary (the modern way)
             // The GeometryEngine's SimplifyAsFeature method can fix many common geometry errors.
             if (!GeometryEngine.Instance.IsSimpleAsFeature(geometry))
             {
@@ -196,8 +179,25 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.Status = "Repaired (Simplified)";
             }
 
-            // 6. Check the area against the minimum threshold
+            // 4. Check for inverted polygons. If area is negative, the orientation is inverted and reverse the orientation.
             double area = (geometry as Polygon).Area;
+            if (area < 0)
+            {
+                var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", shapeToValidate.SourceFile, IcTestResult.TestType.Shape);
+                repairTest.Passed = true;
+                repairTest.AddComment($"Shape with original ID {shapeToValidate.ShapeReferenceId} had a negative area and its orientation was flipped.");
+                parentTestResult.AddSubordinateTestResult(repairTest);
+
+                // Flip the orientation and update the geometry
+                geometry = (Polygon)GeometryEngine.Instance.ReverseOrientation(geometry);
+                shapeToValidate.Geometry = geometry;
+                shapeToValidate.Status = "Repaired (Flipped)";
+
+                // Recalculate the area with the corrected orientation
+                area = (geometry as Polygon).Area;
+            }
+
+            // 6. Check the area against the minimum threshold
             shapeToValidate.Area = area;
             if (Math.Abs(area) < geometryRules.Min_Area)
             {
@@ -221,10 +221,6 @@ namespace IC_Loader_Pro.Services
             // 8. Check the distance from the site, if a site location was provided.
             if (siteLocation != null && shapeToValidate.Geometry != null)
             {
-                //_log.RecordMessage("--- Preparing for Distance Calculation ---", BisLogMessageType.Note);
-                //_log.RecordMessage($"Polygon SR WKID: {geometry.SpatialReference?.Wkid ?? -1}", BisLogMessageType.Note);
-                //_log.RecordMessage($"Site Location SR WKID: {siteLocation.SpatialReference?.Wkid ?? -1}", BisLogMessageType.Note);
-                //_log.RecordMessage($"Required SR WKID: {njspfSr.Wkid}", BisLogMessageType.Note);
                 // Use the GeometryEngine to calculate the geodetic distance.
                 double distance = GeometryEngine.Instance.Distance(shapeToValidate.Geometry, siteLocation);
                 shapeToValidate.DistanceFromSite = distance; // Store the distance
@@ -279,7 +275,14 @@ namespace IC_Loader_Pro.Services
                             using (var datastore = new FileSystemDatastore(connectionPath))
                             using (var featureClass = datastore.OpenDataset<FeatureClass>(fileset.fileName))                                
                             {
-                                shapesInFile = ExtractShapesFromFeatureClass(featureClass, fileset, icType);
+                                if (featureClass.GetDefinition().GetShapeType() == GeometryType.Polygon)
+                                {
+                                    shapesInFile.AddRange(ExtractShapesFromFeatureClass(featureClass, fileset, icType));
+                                }
+                                else if (featureClass.GetDefinition().GetShapeType() == GeometryType.Polyline)
+                                {
+                                    shapesInFile.AddRange(ConvertPolylinesToPolygonsAsync(featureClass, fileset, icType, parentTestResult).Result);
+                                }
                             }
                             break;
                         case "dwg":
@@ -301,7 +304,16 @@ namespace IC_Loader_Pro.Services
                                 // 3. Open the specific polygon feature class
                                 using (var featureClass = cadDatastore.OpenDataset<FeatureClass>(polygonFeatureClassName))
                                 {
-                                    shapesInFile = ExtractShapesFromFeatureClass(featureClass, fileset, icType);
+                                    // Process Polygons
+                                    using (var polygonFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polygon"))
+                                    {
+                                        shapesInFile.AddRange(ExtractShapesFromFeatureClass(polygonFC, fileset, icType));
+                                    }
+                                    // Process Polylines
+                                    using (var polylineFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polyline"))
+                                    {
+                                        shapesInFile.AddRange(ConvertPolylinesToPolygonsAsync(polylineFC, fileset, icType, parentTestResult).Result);
+                                    }
                                 }
                             }
                             break;
@@ -332,6 +344,65 @@ namespace IC_Loader_Pro.Services
 
             return shapesInFile;
         }
+
+        /// <summary>
+        /// Finds closed polylines, converts them to polygons, and logs the action.
+        /// </summary>
+        private async Task<List<ShapeItem>> ConvertPolylinesToPolygonsAsync(FeatureClass polylineFeatureClass, fileset sourceFileSet, string icType, IcTestResult parentTestResult)
+        {
+            var convertedShapes = new List<ShapeItem>();
+            if (polylineFeatureClass == null) return convertedShapes;
+
+            await QueuedTask.Run(() =>
+            {
+                using (var cursor = polylineFeatureClass.Search(null, false))
+                {
+                    while (cursor.MoveNext())
+                    {
+                        if (cursor.Current is Feature feature && feature.GetShape() is Polyline polyline)
+                        {
+                            // A polyline must be closed to be converted to a polygon.
+                            // A polyline is closed if its start and end points are the same.
+                            if (polyline.PointCount > 0 && polyline.Points.First().IsEqual(polyline.Points.Last()))
+                            {
+                                try
+                                {
+                                    // Use PolygonBuilderEx to create a polygon from the polyline's parts.
+                                    var polygon = new PolygonBuilderEx(polyline).ToGeometry();
+
+                                    var shapeItem = new ShapeItem
+                                    {
+                                        Geometry = polygon,
+                                        SourceFile = sourceFileSet.fileName,
+                                        ShapeReferenceId = (int)feature.GetObjectID(),
+                                        ShapeType = "Polygon (from Polyline)",
+                                        IsValid = true,
+                                        Status = "Repaired (Converted)"
+                                    };
+
+                                    // Add a test result to log the successful conversion.
+                                    var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", sourceFileSet.fileName, IcTestResult.TestType.Shape);
+                                    repairTest.Passed = true;
+                                    repairTest.AddComment($"Closed polyline with original ID {shapeItem.ShapeReferenceId} was successfully converted to a polygon.");
+                                    parentTestResult.AddSubordinateTestResult(repairTest);
+
+                                    convertedShapes.Add(shapeItem);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log.RecordError($"Failed to convert closed polyline with ID {feature.GetObjectID()} from file {sourceFileSet.fileName}.", ex, "ConvertPolylinesToPolygonsAsync");
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            return convertedShapes;
+        }
+
+
+
 
         /// <summary>
         /// Extracts all polygon features from a given feature class and converts them to ShapeItem objects.
