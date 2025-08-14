@@ -204,6 +204,12 @@ namespace IC_Loader_Pro.Services
         {
             Log.RecordMessage($"Attempting to get email. ID: '{messageId}', Folder path: '{folderPath}', Store: '{storeName ?? "Default"}'.", BisLogMessageType.Note);
 
+            if (string.IsNullOrEmpty(messageId))
+            {
+                Log.RecordError("GetEmailById was called with a null or empty messageId.", null, nameof(GetEmailById));
+                return null;
+            }
+
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder targetFolder = null;
             Outlook.MailItem mailItem = null;
@@ -236,8 +242,10 @@ namespace IC_Loader_Pro.Services
 
                 if (item is Outlook.MailItem foundMailItem)
                 {
-                    mailItem = foundMailItem;
-                    result = MapToEmailItem(mailItem);
+                    Log.RecordMessage($"Subject line: {foundMailItem.Subject}", BisLogMessageType.Note);
+                    Log.RecordMessage($"Sender: {foundMailItem.SenderEmailAddress}", BisLogMessageType.Note);
+                    Log.RecordMessage($"Sent date: {foundMailItem.SentOn}", BisLogMessageType.Note);
+                    result = MapToEmailItem(foundMailItem);
                 }
                 else
                 {

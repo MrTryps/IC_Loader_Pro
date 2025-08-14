@@ -685,50 +685,88 @@ namespace IC_Loader_Pro
         {
             if (fileSetVM == null) return;
 
+            // This will hold the layer we create, regardless of its specific type (FeatureLayer or GroupLayer)
+            Layer createdLayer = null;
+
+            // Part 1: Perform GIS work on the background thread (QueuedTask)
             await QueuedTask.Run(() =>
             {
                 var activeMap = MapView.Active?.Map;
                 if (activeMap == null) return;
 
-                // Re-create the fileset object to access its internal path property
                 var fs = fileSetVM.Model;
-                string filePath = Path.Combine(fs.path, fs.fileName + "." + fs.filesetType);
+                string extension;
+                switch (fs.filesetType.ToLowerInvariant())
+                {
+                    case "shapefile": extension = "shp"; break;
+                    case "dwg": extension = "dwg"; break;
+                    default: extension = fs.filesetType; break;
+                }
+                string filePath = Path.Combine(fs.path, fs.fileName + "." + extension);
 
                 if (!File.Exists(filePath))
                 {
-                    Log.RecordError($"Could not find file to load at path: {filePath}", null, nameof(OnLoadFileSetAsync));
-                    return;
+                    // Fallback search logic
+                    if (_pathForNextCleanup != null)
+                    {
+                        var files = Directory.GetFiles(_pathForNextCleanup, fs.fileName + "." + extension, SearchOption.AllDirectories);
+                        if (files.Any()) filePath = files.First();
+                        else return;
+                    }
+                    else return;
                 }
 
                 var layerParams = new LayerCreationParams(new Uri(filePath));
-                var newLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                var fileUri = new Uri(filePath);
 
-                if (newLayer != null)
+                // --- THIS IS THE CORRECTED LOGIC ---
+                // Handle each file type appropriately
+                switch (fs.filesetType.ToLowerInvariant())
                 {
-                    _manuallyLoadedLayers.Add(newLayer);
-                    fileSetVM.IsLoadedInMap = true;
-                    (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    case "shapefile":
+                        // The generic version for FeatureLayer can use LayerCreationParams
+                        createdLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                        break;
+                    case "dwg":
+                        // The non-generic version for a GroupLayer needs the Uri directly
+                        createdLayer = LayerFactory.Instance.CreateLayer(fileUri, activeMap);
+                        break;
                 }
             });
+
+            // Part 2: Perform UI updates back on the main UI thread
+            if (createdLayer != null)
+            {
+                _manuallyLoadedLayers.Add(createdLayer);
+
+                await FrameworkApplication.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    fileSetVM.IsLoadedInMap = true;
+                    (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                });
+            }
         }
 
         private Task ClearManuallyLoadedLayersAsync()
         {
+            // Part 1: Perform GIS work on the background thread
             return QueuedTask.Run(() =>
             {
                 var activeMap = MapView.Active?.Map;
                 if (activeMap == null || !_manuallyLoadedLayers.Any()) return;
 
-                // Remove the layers from the map
                 activeMap.RemoveLayers(_manuallyLoadedLayers);
                 _manuallyLoadedLayers.Clear();
 
-                // Reset the state on the view models
-                foreach (var fsVM in _foundFileSets)
+                // Part 2: Dispatch UI updates back to the main UI thread
+                FrameworkApplication.Current.Dispatcher.Invoke(() =>
                 {
-                    fsVM.IsLoadedInMap = false;
-                }
-                (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    foreach (var fsVM in _foundFileSets)
+                    {
+                        fsVM.IsLoadedInMap = false;
+                    }
+                    (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                });
             });
         }
 

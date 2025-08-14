@@ -192,8 +192,8 @@ namespace IC_Loader_Pro
         private async Task ProcessSelectedQueueAsync()
         {
             // --- 1. Initial UI and Configuration Setup ---
-            await ClearManuallyLoadedLayersAsync();
             PerformCleanup();
+            await ClearManuallyLoadedLayersAsync();
             IsEmailActionEnabled = false;
             _foundFileSets.Clear();
 
