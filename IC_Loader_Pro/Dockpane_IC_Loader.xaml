@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:extensions="clr-namespace:ArcGIS.Desktop.Extensions;assembly=ArcGIS.Desktop.Extensions"
+             xmlns:localConverters="clr-namespace:IC_Loader_Pro.ValueConverters"
              mc:Ignorable="d" 
              xmlns:helpers="clr-namespace:IC_Loader_Pro.Helpers"
              d:DataContext="{Binding Path=ui.Dockpane_IC_LoaderViewModel}"
@@ -14,6 +15,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <extensions:DesignOnlyResourceDictionary Source="pack://application:,,,/ArcGIS.Desktop.Framework;component\Themes\Default.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <localConverters:InverseBooleanConverter x:Key="InverseBooleanConverter" />
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -139,6 +141,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="ID" Binding="{Binding ShapeReferenceId}" Width="Auto"/>
                             <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
+                            <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                             <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>
                             <DataGridTextColumn Header="Dist. from Site" Binding="{Binding DistanceFromSite, StringFormat={}{0:F1} ft}" Width="Auto"/>
@@ -216,6 +219,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="ID" Binding="{Binding ShapeReferenceId}" Width="Auto"/>
                         <DataGridTextColumn Header="Source File" Binding="{Binding SourceFile}" Width="*"/>
+                        <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="Auto"/>
                         <DataGridTextColumn Header="Area" Binding="{Binding Area, StringFormat={}{0:F2}}" Width="Auto"/>
                         <DataGridTextColumn Header="Dist. from Site" Binding="{Binding DistanceFromSite, StringFormat={}{0:F1} ft}" Width="Auto"/>
@@ -242,6 +246,19 @@
 
                 <ListView.View>
                     <GridView>
+                        <GridViewColumn Header="Action" Width="80">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Load" 
+                                    Command="{Binding DataContext.LoadFileSetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding IsLoadedInMap, Converter={StaticResource InverseBooleanConverter}}"
+                                    HorizontalAlignment="Center" 
+                                    Style="{DynamicResource Esri_Button}"
+                                    Margin="2"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
                         <GridViewColumn Header="File Name" DisplayMemberBinding="{Binding FileName}" Width="200"/>
                         <GridViewColumn Header="Type" DisplayMemberBinding="{Binding FileSetType}" Width="100"/>
                         <GridViewColumn Header="Valid" Width="60">

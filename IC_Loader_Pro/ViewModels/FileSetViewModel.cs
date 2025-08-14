@@ -8,12 +8,12 @@ namespace IC_Loader_Pro.ViewModels
 {
     public class FileSetViewModel : PropertyChangedBase
     {
-        private readonly fileset _model;
+        internal readonly fileset Model;
 
-        public string FileName => _model.fileName;
-        public string FileSetType => _model.filesetType;
-        public bool IsValid => _model.validSet;
-        public List<string> Extensions => _model.extensions;
+        public string FileName => Model.fileName;
+        public string FileSetType => Model.filesetType;
+        public bool IsValid => Model.validSet;
+        public List<string> Extensions => Model.extensions;
 
         private int _totalFeatureCount;
         public int TotalFeatureCount
@@ -36,7 +36,12 @@ namespace IC_Loader_Pro.ViewModels
             set => SetProperty(ref _invalidFeatureCount, value);
         }
 
-
+        private bool _isLoadedInMap;
+        public bool IsLoadedInMap
+        {
+            get => _isLoadedInMap;
+            set => SetProperty(ref _isLoadedInMap, value);
+        }
         /// <summary>
         /// A formatted string of the extensions for use in a tooltip.
         /// </summary>
@@ -56,7 +61,7 @@ namespace IC_Loader_Pro.ViewModels
 
         public FileSetViewModel(fileset model)
         {
-            _model = model;
+            Model = model;
         }
     }
 }

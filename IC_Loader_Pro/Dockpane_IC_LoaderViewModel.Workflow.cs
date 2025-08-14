@@ -192,6 +192,8 @@ namespace IC_Loader_Pro
         private async Task ProcessSelectedQueueAsync()
         {
             // --- 1. Initial UI and Configuration Setup ---
+            await ClearManuallyLoadedLayersAsync();
+            PerformCleanup();
             IsEmailActionEnabled = false;
             _foundFileSets.Clear();
 
@@ -266,16 +268,40 @@ namespace IC_Loader_Pro
                                 }
                             });
                         }
+                        //if (processingResult.ShapeItems?.Any() == true)
+                        //{
+                        //    await RunOnUIThread(() =>
+                        //    {
+                        //        _shapesToReview.Clear();
+                        //        foreach (var shape in processingResult.ShapeItems) { _shapesToReview.Add(shape); }
+                        //    });
+                        //    await RedrawAllShapesOnMapAsync();
+                        //    await ZoomToAllAndSiteAsync();
+                        //}
                         if (processingResult.ShapeItems?.Any() == true)
                         {
                             await RunOnUIThread(() =>
                             {
                                 _shapesToReview.Clear();
-                                foreach (var shape in processingResult.ShapeItems) { _shapesToReview.Add(shape); }
+                                _selectedShapes.Clear();
+
+                                // Separate shapes based on the IsAutoSelected flag
+                                foreach (var shape in processingResult.ShapeItems)
+                                {
+                                    if (shape.IsAutoSelected)
+                                    {
+                                        _selectedShapes.Add(shape);
+                                    }
+                                    else
+                                    {
+                                        _shapesToReview.Add(shape);
+                                    }
+                                }
                             });
                             await RedrawAllShapesOnMapAsync();
                             await ZoomToAllAndSiteAsync();
                         }
+
                         StatusMessage = "Ready for review.";
                         IsEmailActionEnabled = true;
                         break;
@@ -298,8 +324,12 @@ namespace IC_Loader_Pro
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An unexpected error occurred. The application will advance to the next email.", "Processing Error");
             }
             finally
-            {               
-                CleanupTempFolder(emailToProcess);
+            {
+                //CleanupTempFolder(emailToProcess);
+                if (emailToProcess != null)
+                {
+                    _pathForNextCleanup = emailToProcess.TempFolderPath;
+                }
                 if (SelectedIcType != null)
                 {
                     SelectedIcType.EmailCount = emailsToProcess.Count;

@@ -28,6 +28,13 @@ namespace IC_Loader_Pro.Models
             set => SetProperty(ref _isHidden, value);
         }
 
+        private string _description = string.Empty;
+        public string Description
+        {
+            get => _description;
+            set => SetProperty(ref _description, value);
+        }
+
         /// <summary>
         /// A flag indicating that this shape's layer name matched a filter
         /// and should be automatically moved to the 'use' list.

@@ -253,209 +253,269 @@ namespace IC_Loader_Pro.Services
             var shapesInFile = new List<ShapeItem>();
             _log.RecordMessage($"Reading features from file: {fileset.fileName} (Type: {fileset.filesetType})", BIS_Log.BisLogMessageType.Note);
 
-            // This entire block of GIS code MUST run on the ArcGIS Pro background thread (MCT).
-            await QueuedTask.Run(() =>
+            try
             {
-                string shpPath = Path.Combine(fileset.path, fileset.fileName + ".shp");
-                try
+                switch (fileset.filesetType.ToLowerInvariant())
                 {
-                    switch (fileset.filesetType.ToLowerInvariant())
-                    {
-                        case "shapefile":
-                            // Construct the full path to the .shp file
+                    case "shapefile":
+                        string shpPath = Path.Combine(fileset.path, fileset.fileName + ".shp");
+                        if (!File.Exists(shpPath))
+                        {
+                            _log.RecordError($"Shapefile not found at expected path: {shpPath}", null, "ReadFeaturesFromFileAsync");
+                            fileset.validSet = false;
+                            return shapesInFile;
+                        }
 
-                            if (!File.Exists(shpPath))
+                        await QueuedTask.Run(() =>
+                        {
+                            var shpConnectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Shapefile);
+                            using (var datastore = new FileSystemDatastore(shpConnectionPath))
+                            using (var featureClass = datastore.OpenDataset<FeatureClass>(fileset.fileName))
                             {
-                                _log.RecordError($"Shapefile not found at expected path: {shpPath}", null, "ReadFeaturesFromFileAsync");
-                                return; // Exit if the shapefile doesn't exist
+                                // Call the single, unified helper method
+                                shapesInFile.AddRange(ExtractShapesFromFeatureClass(featureClass, fileset, icType, parentTestResult));
                             }
+                        });
+                        break;
 
-                            // The ArcGIS Pro SDK connects to a folder containing shapefiles as if it were a geodatabase.
-                            var connectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Shapefile);
-                            using (var datastore = new FileSystemDatastore(connectionPath))
-                            using (var featureClass = datastore.OpenDataset<FeatureClass>(fileset.fileName))                                
-                            {
-                                if (featureClass.GetDefinition().GetShapeType() == GeometryType.Polygon)
-                                {
-                                    shapesInFile.AddRange(ExtractShapesFromFeatureClass(featureClass, fileset, icType));
-                                }
-                                else if (featureClass.GetDefinition().GetShapeType() == GeometryType.Polyline)
-                                {
-                                    shapesInFile.AddRange(ConvertPolylinesToPolygonsAsync(featureClass, fileset, icType, parentTestResult).Result);
-                                }
-                            }
-                            break;
-                        case "dwg":
-                            string dwgFilePath = Path.Combine(fileset.path, fileset.fileName + ".dwg");
-                            if (!File.Exists(dwgFilePath))
-                            {
-                                _log.RecordError($"DWG file not found at expected path: {dwgFilePath}", null, "ReadFeaturesFromFileAsync");
-                                fileset.validSet = false;
-                                return;
-                            }
+                    case "dwg":
+                        string dwgPath = Path.Combine(fileset.path, fileset.fileName + ".dwg");
+                        if (!File.Exists(dwgPath))
+                        {
+                            _log.RecordError($"DWG file not found at expected path: {dwgPath}", null, "ReadFeaturesFromFileAsync");
+                            fileset.validSet = false;
+                            return shapesInFile;
+                        }
 
-                            // 1. Connect to the FOLDER containing the CAD file
+                        await QueuedTask.Run(() =>
+                        {
                             var cadConnectionPath = new FileSystemConnectionPath(new Uri(fileset.path), FileSystemDatastoreType.Cad);
                             using (var cadDatastore = new FileSystemDatastore(cadConnectionPath))
                             {
-                                // 2. Construct the specific name for the polygon layer within the DWG
-                                string polygonFeatureClassName = $"{fileset.fileName}.dwg:Polygon";
-
-                                // 3. Open the specific polygon feature class
-                                using (var featureClass = cadDatastore.OpenDataset<FeatureClass>(polygonFeatureClassName))
+                                // Process Polygons from the DWG
+                                using (var polygonFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polygon"))
                                 {
-                                    // Process Polygons
-                                    using (var polygonFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polygon"))
-                                    {
-                                        shapesInFile.AddRange(ExtractShapesFromFeatureClass(polygonFC, fileset, icType));
-                                    }
-                                    // Process Polylines
-                                    using (var polylineFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polyline"))
-                                    {
-                                        shapesInFile.AddRange(ConvertPolylinesToPolygonsAsync(polylineFC, fileset, icType, parentTestResult).Result);
-                                    }
+                                    // Call the single, unified helper method
+                                    shapesInFile.AddRange(ExtractShapesFromFeatureClass(polygonFC, fileset, icType, parentTestResult));
+                                }
+                                // Process Polylines from the DWG
+                                using (var polylineFC = cadDatastore.OpenDataset<FeatureClass>($"{fileset.fileName}.dwg:Polyline"))
+                                {
+                                    // Call the single, unified helper method again for the polylines
+                                    shapesInFile.AddRange(ExtractShapesFromFeatureClass(polylineFC, fileset, icType, parentTestResult));
                                 }
                             }
-                            break;
+                        });
+                        break;
 
-                        default:
-                            _log.RecordMessage($"File type '{fileset.filesetType}' is not supported for feature extraction.", BisLogMessageType.Warning);
-                            fileset.validSet = false;
-                            break;
-                    }
+                    default:
+                        _log.RecordMessage($"File type '{fileset.filesetType}' is not supported for feature extraction.", BisLogMessageType.Warning);
+                        fileset.validSet = false;
+                        break;
                 }
-                catch (InvalidOperationException ex) // Catch the specific error for corrupt files
-                {
-                    _log.RecordError($"An error occurred while trying to open '{shpPath}'. The fileset may be corrupt or not a valid feature class. It will be flagged as invalid.", ex, "ReadFeaturesFromFileAsync");
-                    fileset.validSet = false;
-                    var unreadableTest = _namedTests.returnNewTestResult("GIS_FileReadable", fileset.fileName, IcTestResult.TestType.Submission);
-                    unreadableTest.Passed = false;
-                    unreadableTest.AddComment($"The dataset '{fileset.fileName}' could not be opened. It may be corrupt.");
-                    parentTestResult.AddSubordinateTestResult(unreadableTest);
-                    parentTestResult.Passed = false;
-                }
-                catch (Exception ex)
-                {
-                    _log.RecordError($"An unexpected error occurred while reading features from '{shpPath}'.", ex, "ReadFeaturesFromFileAsync");
-                    fileset.validSet = false;
-                    
-                }
-            });
+            }
+            catch (Exception ex)
+            {
+                string filePath = Path.Combine(fileset.path, fileset.fileName);
+                _log.RecordError($"An unexpected error occurred reading features from '{filePath}'.", ex, "ReadFeaturesFromFileAsync");
+                fileset.validSet = false;
+
+                var unreadableTest = _namedTests.returnNewTestResult("GIS_FileReadable", fileset.fileName, IcTestResult.TestType.Submission);
+                unreadableTest.Passed = false;
+                unreadableTest.AddComment($"The dataset '{fileset.fileName}' could not be opened. It may be corrupt.");
+                parentTestResult.AddSubordinateTestResult(unreadableTest);
+            }
+
+            if (!shapesInFile.Any())
+            {
+                _log.RecordMessage($"No processable polygon features were found in the file: {fileset.fileName}", BisLogMessageType.Warning);
+            }
 
             return shapesInFile;
         }
-
-        /// <summary>
-        /// Finds closed polylines, converts them to polygons, and logs the action.
-        /// </summary>
-        private async Task<List<ShapeItem>> ConvertPolylinesToPolygonsAsync(FeatureClass polylineFeatureClass, fileset sourceFileSet, string icType, IcTestResult parentTestResult)
-        {
-            var convertedShapes = new List<ShapeItem>();
-            if (polylineFeatureClass == null) return convertedShapes;
-
-            await QueuedTask.Run(() =>
-            {
-                using (var cursor = polylineFeatureClass.Search(null, false))
-                {
-                    while (cursor.MoveNext())
-                    {
-                        if (cursor.Current is Feature feature && feature.GetShape() is Polyline polyline)
-                        {
-                            // A polyline must be closed to be converted to a polygon.
-                            // A polyline is closed if its start and end points are the same.
-                            if (polyline.PointCount > 0 && polyline.Points.First().IsEqual(polyline.Points.Last()))
-                            {
-                                try
-                                {
-                                    // Use PolygonBuilderEx to create a polygon from the polyline's parts.
-                                    var polygon = new PolygonBuilderEx(polyline).ToGeometry();
-
-                                    var shapeItem = new ShapeItem
-                                    {
-                                        Geometry = polygon,
-                                        SourceFile = sourceFileSet.fileName,
-                                        ShapeReferenceId = (int)feature.GetObjectID(),
-                                        ShapeType = "Polygon (from Polyline)",
-                                        IsValid = true,
-                                        Status = "Repaired (Converted)"
-                                    };
-
-                                    // Add a test result to log the successful conversion.
-                                    var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", sourceFileSet.fileName, IcTestResult.TestType.Shape);
-                                    repairTest.Passed = true;
-                                    repairTest.AddComment($"Closed polyline with original ID {shapeItem.ShapeReferenceId} was successfully converted to a polygon.");
-                                    parentTestResult.AddSubordinateTestResult(repairTest);
-
-                                    convertedShapes.Add(shapeItem);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _log.RecordError($"Failed to convert closed polyline with ID {feature.GetObjectID()} from file {sourceFileSet.fileName}.", ex, "ConvertPolylinesToPolygonsAsync");
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            return convertedShapes;
-        }
-
 
 
 
         /// <summary>
         /// Extracts all polygon features from a given feature class and converts them to ShapeItem objects.
         /// </summary>
-        private List<ShapeItem> ExtractShapesFromFeatureClass(FeatureClass featureClass, fileset sourceFileSet, string icType)
+        private List<ShapeItem> ExtractShapesFromFeatureClass(FeatureClass featureClass, fileset sourceFileSet, string icType, IcTestResult parentTestResult)
         {
             var shapes = new List<ShapeItem>();
             if (featureClass == null) return shapes;
 
-            // Get the list of attribute fields we need to extract from the rules engine.
-            var fieldsToMine = _rules.ReturnIcGisTypeSettings(icType)
-                                     .FeatureFields
-                                     .Where(f => f.DisplayInPreview)
-                                     .Select(f => f.Fieldname)
-                                     .ToList();
+            var nameFilters = _rules.ReturnIcGisTypeSettings(icType)?.FeatureNameFilters;
+            var fieldsToMine = _rules.ReturnIcGisTypeSettings(icType).FeatureFields.Where(f => f.DisplayInPreview).Select(f => f.Fieldname).ToList();
+            var featureClassDef = featureClass.GetDefinition();
+            bool isPolylineSource = featureClassDef.GetShapeType() == GeometryType.Polyline;
 
-            var queryFilter = new QueryFilter { SubFields = "*" }; // Get all fields
-
-            using (var cursor = featureClass.Search(queryFilter, false))
+            using (var cursor = featureClass.Search(null, false))
             {
                 while (cursor.MoveNext())
                 {
-                    using (var feature = cursor.Current as Feature)
-                    {
-                        if (feature?.GetShape() is Polygon polygon)
-                        {
-                            var shapeItem = new ShapeItem
-                            {
-                                Geometry = polygon,
-                                SourceFile = sourceFileSet.fileName,
-                                ShapeReferenceId = (int)feature.GetObjectID(),
-                                ShapeType = feature.GetShape().GeometryType.ToString(),
-                                IsValid = true,
-                                Status = "Pending Validation"
-                            };
+                    if (cursor.Current is not Feature feature) continue;
 
-                            // Extract the attribute values for the "fields to mine".
-                            foreach (string fieldName in fieldsToMine)
+                    Polygon polygon = null;
+                    bool wasConverted = false;
+
+                    if (isPolylineSource)
+                    {
+                        if (feature.GetShape() is Polyline polyline && polyline.PointCount > 0 && polyline.Points.First().IsEqual(polyline.Points.Last()))
+                        {
+                            try
+                            {
+                                polygon = new PolygonBuilderEx(polyline).ToGeometry();
+                                wasConverted = true;
+                            }
+                            catch (Exception ex)
+                            {
+                                _log.RecordError($"Failed to convert closed polyline with ID {feature.GetObjectID()}.", ex, "ExtractShapesFromFeatureClass");
+                                continue;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        polygon = feature.GetShape() as Polygon;
+                    }
+
+                    if (polygon == null) continue;
+
+                    var shapeItem = new ShapeItem
+                    {
+                        Geometry = polygon,
+                        SourceFile = sourceFileSet.fileName,
+                        ShapeReferenceId = (int)feature.GetObjectID(),
+                        IsValid = true,
+                        Status = wasConverted ? "Repaired (Converted)" : "Pending Validation",
+                        ShapeType = wasConverted ? "Polygon (from Polyline)" : "Polygon"
+                    };
+
+                    // --- THIS IS THE NEW, COMPLETE LOGIC FOR THE DESCRIPTION ---
+                    if (nameFilters != null)
+                    {
+                        bool descriptionSet = false;
+                        // First, check for an auto-select match
+                        foreach (var filter in nameFilters)
+                        {
+                            string fieldName = filter.Key;
+                            int fieldIndex = feature.FindField(fieldName);
+                            if (fieldIndex != -1)
+                            {
+                                string attributeValue = feature[fieldIndex]?.ToString() ?? "";
+                                if (filter.Value.Contains(attributeValue, StringComparer.OrdinalIgnoreCase))
+                                {
+                                    shapeItem.IsAutoSelected = true;
+                                    shapeItem.Description = attributeValue;
+                                    descriptionSet = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // If not auto-selected, find the first available filter field to use as a description
+                        if (!descriptionSet)
+                        {
+                            foreach (string fieldName in nameFilters.Keys)
                             {
                                 int fieldIndex = feature.FindField(fieldName);
                                 if (fieldIndex != -1)
                                 {
-                                    shapeItem.Attributes[fieldName] = feature[fieldIndex];
+                                    string attributeValue = feature[fieldIndex]?.ToString();
+                                    if (!string.IsNullOrEmpty(attributeValue))
+                                    {
+                                        shapeItem.Description = attributeValue;
+                                        break; // Stop after finding the first one
+                                    }
                                 }
                             }
-                            shapes.Add(shapeItem);
                         }
                     }
+                    // --- END OF NEW LOGIC ---
+
+                    // Get other display attributes
+                    foreach (string fieldName in fieldsToMine)
+                    {
+                        int fieldIndex = feature.FindField(fieldName);
+                        if (fieldIndex != -1) { shapeItem.Attributes[fieldName] = feature[fieldName]; }
+                    }
+
+                    shapes.Add(shapeItem);
                 }
             }
             return shapes;
         }
 
+        //private void ConvertAndAddPolyline(Feature feature, Polyline polyline, fileset sourceFileSet, IcTestResult parentTestResult, List<ShapeItem> shapeList, bool isAutoSelected)
+        //{
+        //    if (polyline.PointCount > 0 && polyline.Points.First().IsEqual(polyline.Points.Last()))
+        //    {
+        //        try
+        //        {
+        //            var polygon = new PolygonBuilderEx(polyline).ToGeometry();
+        //            var shapeItem = new ShapeItem
+        //            {
+        //                Geometry = polygon,
+        //                SourceFile = sourceFileSet.fileName,
+        //                ShapeReferenceId = (int)feature.GetObjectID(),
+        //                ShapeType = "Polygon (from Polyline)",
+        //                IsValid = true,
+        //                Status = "Repaired (Converted)",
+        //                IsAutoSelected = isAutoSelected
+        //            };
 
+        //            var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", sourceFileSet.fileName, IcTestResult.TestType.Shape);
+        //            repairTest.Passed = true;
+        //            repairTest.AddComment($"Closed polyline with ID {shapeItem.ShapeReferenceId} was converted to a polygon." + (isAutoSelected ? " It was auto-selected." : ""));
+        //            parentTestResult.AddSubordinateTestResult(repairTest);
+
+        //            shapeList.Add(shapeItem);
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            _log.RecordError($"Failed to convert closed polyline with ID {feature.GetObjectID()}.", ex, "ConvertAndAddPolyline");
+        //        }
+        //    }
+        //}
+
+        /// <summary>
+        /// Builds a SQL WHERE clause from a dictionary of field names and a list of values to match.
+        /// </summary>
+        private string ConstructWhereClauseFromFilters(Dictionary<string, List<string>> nameFilters, FeatureClass featureClass)
+        {
+            if (nameFilters == null || !nameFilters.Any() || featureClass == null)
+            {
+                return null;
+            }
+
+            var validClauses = new List<string>();
+            var fields = featureClass.GetDefinition().GetFields();
+
+            // Iterate through the filters (e.g., Key="Layer", Value=["CEA boundary", "CEA boundary-GIS"])
+            foreach (var filter in nameFilters)
+            {
+                string fieldName = filter.Key;
+                List<string> valuesToMatch = filter.Value;
+
+                // 1. Check if the field exists in the feature class and if there are values to match
+                if (valuesToMatch.Any() && fields.Any(f => f.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    // 2. Format the values for a SQL 'IN' clause (e.g., "'VALUE1', 'VALUE2'")
+                    //    This includes converting to uppercase and escaping single quotes.
+                    string formattedValues = string.Join(",", valuesToMatch.Select(v => $"'{v.ToUpper().Replace("'", "''")}'"));
+
+                    // 3. Build the clause for this field (e.g., "UPPER(Layer) IN ('CEA BOUNDARY', 'CEA BOUNDARY-GIS')")
+                    validClauses.Add($"UPPER({fieldName}) IN ({formattedValues})");
+                }
+            }
+
+            if (!validClauses.Any())
+            {
+                return null; // No matching fields were found.
+            }
+
+            // 4. Combine all valid clauses with " OR "
+            return string.Join(" OR ", validClauses);
+        }
     }
 }

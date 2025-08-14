@@ -50,7 +50,9 @@ namespace IC_Loader_Pro
         public ReadOnlyObservableCollection<ShapeItem> ShapesToReview { get; }
         public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
+        private readonly List<Layer> _manuallyLoadedLayers = new List<Layer>();
 
+        private string _pathForNextCleanup;
 
         private MapPoint _currentSiteLocation;
         private GraphicsLayer _graphicsLayer = null;
@@ -170,6 +172,7 @@ namespace IC_Loader_Pro
             ActivateSelectToolCommand = new RelayCommand(ActivateSelectTool);
             HideSelectionCommand = new RelayCommand(async () => await OnHideSelectionAsync(),() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
             UnhideAllCommand = new RelayCommand(async () => await OnUnhideAllAsync());
+            LoadFileSetCommand = new RelayCommand(async (param) => await OnLoadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel fs && !fs.IsLoadedInMap);
         }
         #endregion
      
@@ -678,7 +681,80 @@ namespace IC_Loader_Pro
             await RedrawAllShapesOnMapAsync();
         }
 
+        private async Task OnLoadFileSetAsync(FileSetViewModel fileSetVM)
+        {
+            if (fileSetVM == null) return;
 
+            await QueuedTask.Run(() =>
+            {
+                var activeMap = MapView.Active?.Map;
+                if (activeMap == null) return;
+
+                // Re-create the fileset object to access its internal path property
+                var fs = fileSetVM.Model;
+                string filePath = Path.Combine(fs.path, fs.fileName + "." + fs.filesetType);
+
+                if (!File.Exists(filePath))
+                {
+                    Log.RecordError($"Could not find file to load at path: {filePath}", null, nameof(OnLoadFileSetAsync));
+                    return;
+                }
+
+                var layerParams = new LayerCreationParams(new Uri(filePath));
+                var newLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+
+                if (newLayer != null)
+                {
+                    _manuallyLoadedLayers.Add(newLayer);
+                    fileSetVM.IsLoadedInMap = true;
+                    (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            });
+        }
+
+        private Task ClearManuallyLoadedLayersAsync()
+        {
+            return QueuedTask.Run(() =>
+            {
+                var activeMap = MapView.Active?.Map;
+                if (activeMap == null || !_manuallyLoadedLayers.Any()) return;
+
+                // Remove the layers from the map
+                activeMap.RemoveLayers(_manuallyLoadedLayers);
+                _manuallyLoadedLayers.Clear();
+
+                // Reset the state on the view models
+                foreach (var fsVM in _foundFileSets)
+                {
+                    fsVM.IsLoadedInMap = false;
+                }
+                (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            });
+        }
+
+        private void PerformCleanup()
+        {
+            // If there's a path from a previous run, delete that folder now.
+            if (!string.IsNullOrEmpty(_pathForNextCleanup))
+            {
+                try
+                {
+                    if (Directory.Exists(_pathForNextCleanup))
+                    {
+                        Directory.Delete(_pathForNextCleanup, true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.RecordError($"Failed to delete previous temp folder: {_pathForNextCleanup}", ex, "PerformCleanup");
+                }
+                finally
+                {
+                    // Clear the path regardless of success or failure.
+                    _pathForNextCleanup = null;
+                }
+            }
+        }
 
 
         #endregion

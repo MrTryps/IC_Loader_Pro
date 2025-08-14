@@ -372,11 +372,15 @@ namespace IC_Loader_Pro.Services
             if (attachments == null || attachments.Count == 0) return;
 
             // Create a unique temporary folder for this email's attachments.
-            string tempFolderPath = Path.Combine(Path.GetTempPath(), "IC_Loader", Guid.NewGuid().ToString());
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string addinTempRoot = Path.Combine(localAppData, "IC_Loader_Pro_Temp");
+            Directory.CreateDirectory(addinTempRoot);
+            string tempFolderPath = Path.Combine(addinTempRoot, Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempFolderPath);
 
             // Store the path so we can access it later for processing and cleanup.
             emailItem.TempFolderPath = tempFolderPath;
+            Log.RecordMessage($"Created temporary folder for email attachments: {tempFolderPath}", BisLogMessageType.Note);
 
             foreach (Outlook.Attachment attachment in attachments)
             {
