@@ -22,6 +22,13 @@ namespace IC_Loader_Pro.ViewModels
             set => SetProperty(ref _totalFeatureCount, value);
         }
 
+        private int _filteredCount;
+        public int FilteredCount
+        {
+            get => _filteredCount;
+            set => SetProperty(ref _filteredCount, value);
+        }
+
         private int _validFeatureCount;
         public int ValidFeatureCount
         {
@@ -42,6 +49,24 @@ namespace IC_Loader_Pro.ViewModels
             get => _isLoadedInMap;
             set => SetProperty(ref _isLoadedInMap, value);
         }
+
+        private bool _showInMap = true;
+        public bool ShowInMap
+        {
+            get => _showInMap;
+            set => SetProperty(ref _showInMap, value);
+        }
+
+        private bool _useFilter = true;
+        public bool UseFilter
+        {
+            get => _useFilter;
+            set => SetProperty(ref _useFilter, value);
+        }
+
+
+
+
         /// <summary>
         /// A formatted string of the extensions for use in a tooltip.
         /// </summary>

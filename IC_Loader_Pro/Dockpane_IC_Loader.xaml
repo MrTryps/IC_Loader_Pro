@@ -246,7 +246,22 @@
 
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="Action" Width="80">
+                        <GridViewColumn Header="Show" Width="50">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding ShowInMap}" HorizontalAlignment="Center" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+
+                        <GridViewColumn Header="UseFilt" Width="55">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding UseFilter}" HorizontalAlignment="Center" />
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="Load" Width="80">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <Button Content="Load" 
@@ -259,6 +274,20 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
+                        <GridViewColumn Header="Reload" Width="80">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Reload" 
+                                    Command="{Binding DataContext.ReloadFileSetCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding IsLoadedInMap, Converter={StaticResource InverseBooleanConverter}}"
+                                    HorizontalAlignment="Center" 
+                                    Style="{DynamicResource Esri_Button}"
+                                    Margin="2"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+
                         <GridViewColumn Header="File Name" DisplayMemberBinding="{Binding FileName}" Width="200"/>
                         <GridViewColumn Header="Type" DisplayMemberBinding="{Binding FileSetType}" Width="100"/>
                         <GridViewColumn Header="Valid" Width="60">
@@ -289,6 +318,10 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
+                        <GridViewColumn Header="Total Count" DisplayMemberBinding="{Binding TotalFeatureCount}" Width="85"/>
+                        <GridViewColumn Header="Filtered Count" DisplayMemberBinding="{Binding FilteredCount}" Width="85"/>
+                        <GridViewColumn Header="Valid Count" DisplayMemberBinding="{Binding ValidFeatureCount}" Width="85"/>
+                        <GridViewColumn Header="Invalid Count" DisplayMemberBinding="{Binding InvalidFeatureCount}" Width="95"/>
                     </GridView>
                 </ListView.View>
             </ListView>

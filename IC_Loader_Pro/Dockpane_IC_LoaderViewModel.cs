@@ -50,9 +50,13 @@ namespace IC_Loader_Pro
         public ReadOnlyObservableCollection<ShapeItem> ShapesToReview { get; }
         public ReadOnlyObservableCollection<ShapeItem> SelectedShapes { get; }
 
+        private List<ShapeItem> _allProcessedShapes = new List<ShapeItem>();
+
         private readonly List<Layer> _manuallyLoadedLayers = new List<Layer>();
 
         private string _pathForNextCleanup;
+
+        private bool _isRefreshingShapes = false;
 
         private MapPoint _currentSiteLocation;
         private GraphicsLayer _graphicsLayer = null;
@@ -128,6 +132,47 @@ namespace IC_Loader_Pro
             }
         }
 
+        private bool _showInMap = true;
+        public bool ShowInMap
+        {
+            get => _showInMap;
+            set => SetProperty(ref _showInMap, value);
+        }
+
+        private bool _useFilter = true;
+        public bool UseFilter
+        {
+            get => _useFilter;
+            set => SetProperty(ref _useFilter, value);
+        }
+
+        private int _totalFeatureCount;
+        public int TotalFeatureCount
+        {
+            get => _totalFeatureCount;
+            set => SetProperty(ref _totalFeatureCount, value);
+        }
+
+        private int _filteredCount;
+        public int FilteredCount
+        {
+            get => _filteredCount;
+            set => SetProperty(ref _filteredCount, value);
+        }
+
+        private int _validFeatureCount;
+        public int ValidFeatureCount
+        {
+            get => _validFeatureCount;
+            set => SetProperty(ref _validFeatureCount, value);
+        }
+
+        private int _invalidFeatureCount;
+        public int InvalidFeatureCount
+        {
+            get => _invalidFeatureCount;
+            set => SetProperty(ref _invalidFeatureCount, value);
+        }
         #endregion
 
         #region Constructor
@@ -143,6 +188,7 @@ namespace IC_Loader_Pro
             SelectedShapesToUse.CollectionChanged += SelectedShapesToUse_CollectionChanged;
             SelectedShapesForReview.CollectionChanged += OnSelectionChanged;
             SelectedShapesToUse.CollectionChanged += OnSelectionChanged;
+            _foundFileSets.CollectionChanged += FoundFileSets_CollectionChanged;
 
 
             // This is a key step. It allows a background thread to safely update a collection that the UI is bound to.
@@ -173,6 +219,7 @@ namespace IC_Loader_Pro
             HideSelectionCommand = new RelayCommand(async () => await OnHideSelectionAsync(),() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
             UnhideAllCommand = new RelayCommand(async () => await OnUnhideAllAsync());
             LoadFileSetCommand = new RelayCommand(async (param) => await OnLoadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel fs && !fs.IsLoadedInMap);
+            ReloadFileSetCommand = new RelayCommand(async (param) => await OnReloadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel);
         }
         #endregion
      
@@ -211,6 +258,99 @@ namespace IC_Loader_Pro
                 }             
             }
         }
+
+        private async Task RefreshShapeListsAndMap()
+        {
+            if (_isRefreshingShapes) return;
+
+            try
+            {
+                _isRefreshingShapes = true;
+
+                // The UI thread must acquire the lock before modifying the collections
+                lock (_lock)
+                {
+                    _shapesToReview.Clear();
+                    _selectedShapes.Clear();
+
+                    var fileSetLookup = _foundFileSets.ToDictionary(fs => fs.FileName);
+
+                    foreach (var shape in _allProcessedShapes)
+                    {
+                        if (fileSetLookup.TryGetValue(shape.SourceFile, out var parentFileSet))
+                        {
+                            if (!parentFileSet.ShowInMap)
+                            {
+                                continue;
+                            }
+
+                            // --- THIS IS THE CORRECTED FILTER LOGIC ---
+                            if (parentFileSet.UseFilter)
+                            {
+                                // If filter is ON, only show auto-selected shapes.
+                                if (shape.IsAutoSelected)
+                                {
+                                    _selectedShapes.Add(shape);
+                                }
+                                // Any shape that is not auto-selected is now hidden.
+                            }
+                            else
+                            {
+                                // If filter is OFF, separate shapes normally.
+                                if (shape.IsAutoSelected)
+                                {
+                                    _selectedShapes.Add(shape);
+                                }
+                                else
+                                {
+                                    _shapesToReview.Add(shape);
+                                }
+                            }
+                        }
+                    }
+                } // The lock is released here
+
+                await RedrawAllShapesOnMapAsync();
+            }
+            finally
+            {
+                _isRefreshingShapes = false;
+            }
+        }
+
+
+
+        private async void FileSetViewModel_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            // If a Show or Filter checkbox changes, refresh everything.
+            if (e.PropertyName == nameof(FileSetViewModel.ShowInMap) || e.PropertyName == nameof(FileSetViewModel.UseFilter))
+            {
+                // Use the busy flag to prevent the crash
+                if (_isRefreshingShapes) return;
+                await RefreshShapeListsAndMap();
+            }
+        }
+
+        private void FoundFileSets_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.NewItems != null)
+            {
+                foreach (FileSetViewModel item in e.NewItems)
+                {
+                    item.PropertyChanged += FileSetViewModel_PropertyChanged;
+                }
+            }
+            if (e.OldItems != null)
+            {
+                foreach (FileSetViewModel item in e.OldItems)
+                {
+                    item.PropertyChanged -= FileSetViewModel_PropertyChanged;
+                }
+            }
+        }
+
+
+
 
         private void SelectedShapesForReview_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
@@ -794,6 +934,14 @@ namespace IC_Loader_Pro
             }
         }
 
+        private async Task OnReloadFileSetAsync(FileSetViewModel fileSetVM)
+        {
+            Log.RecordMessage($"Reload requested for fileset: {fileSetVM.FileName}", BisLogMessageType.Note);
+            // TODO: This is a complex operation that requires refactoring the feature
+            // processing logic to run for a single fileset.
+            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Reload functionality is not yet implemented.", "Coming Soon");
+            await Task.CompletedTask;
+        }
 
         #endregion
     }

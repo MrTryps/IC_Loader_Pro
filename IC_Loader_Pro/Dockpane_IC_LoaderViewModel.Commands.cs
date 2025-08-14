@@ -49,6 +49,7 @@ namespace IC_Loader_Pro
         public ICommand HideSelectionCommand { get; private set; }
         public ICommand UnhideAllCommand { get; private set; }
         public ICommand LoadFileSetCommand { get; private set; }
+        public ICommand ReloadFileSetCommand { get; private set; }
 
         #endregion
 

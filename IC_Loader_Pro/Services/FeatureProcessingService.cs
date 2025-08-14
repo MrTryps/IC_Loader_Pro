@@ -100,6 +100,7 @@ namespace IC_Loader_Pro.Services
                 return;
             }
 
+            bool isShapeCurrentlyValid = true;
             // Get the geometry rules for the current IC Type
             var geometryRules = _rules.ReturnIcGisTypeSettings(icType)?.GeometryRules;
             if (geometryRules == null)
@@ -201,7 +202,8 @@ namespace IC_Loader_Pro.Services
             shapeToValidate.Area = area;
             if (Math.Abs(area) < geometryRules.Min_Area)
             {
-                shapeToValidate.IsValid = false;
+                isShapeCurrentlyValid = false;
+                //shapeToValidate.IsValid = false;
                 shapeToValidate.Status = "Area Below Minimum";
                 recordShapeCheckFailure("Area Below Minimum");
             }
@@ -213,7 +215,8 @@ namespace IC_Loader_Pro.Services
                 extent.YMin < geometryRules.Y_Min ||
                 extent.YMax > geometryRules.Y_Max)
             {
-                shapeToValidate.IsValid = false;
+                //shapeToValidate.IsValid = false;
+                isShapeCurrentlyValid = false;
                 shapeToValidate.Status = "Outside Allowable Extent";
                 recordShapeCheckFailure("Outside Allowable Extent");
             }
@@ -227,14 +230,15 @@ namespace IC_Loader_Pro.Services
 
                 if (geometryRules != null && distance > geometryRules.SiteDistance)
                 {
-                    shapeToValidate.IsValid = false;
+                    //shapeToValidate.IsValid = false;
+                    isShapeCurrentlyValid = false;
                     shapeToValidate.Status = "Exceeds Max Distance from Site";
                     recordShapeCheckFailure("Outside Allowable Extent");
                 }
             }
 
             // If all checks pass, the shape is considered valid
-            shapeToValidate.IsValid = true;
+            shapeToValidate.IsValid = isShapeCurrentlyValid;
             if (shapeToValidate.Status == "Pending Validation") // Only update if not already repaired
             {
                 shapeToValidate.Status = "Valid";

@@ -242,9 +242,9 @@ namespace IC_Loader_Pro.Services
 
                 if (item is Outlook.MailItem foundMailItem)
                 {
-                    Log.RecordMessage($"Subject line: {foundMailItem.Subject}", BisLogMessageType.Note);
-                    Log.RecordMessage($"Sender: {foundMailItem.SenderEmailAddress}", BisLogMessageType.Note);
-                    Log.RecordMessage($"Sent date: {foundMailItem.SentOn}", BisLogMessageType.Note);
+                    Log.RecordMessage($"    Subject line: {foundMailItem.Subject}", BisLogMessageType.Note);
+                    Log.RecordMessage($"    Sender: {foundMailItem.SenderEmailAddress}", BisLogMessageType.Note);
+                    Log.RecordMessage($"    Sent date: {foundMailItem.SentOn}", BisLogMessageType.Note);
                     result = MapToEmailItem(foundMailItem);
                 }
                 else

@@ -49,7 +49,7 @@ namespace IC_Loader_Pro.Models
         public double Area { get; set; }
 
         // --- Validation Properties ---
-        public bool IsValid { get; set; }
+        public bool IsValid { get; set; } = true;
         public string Status { get; set; } // e.g., "OK", "Self-Intersecting"
 
         private double _distanceFromSite;

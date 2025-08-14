@@ -10,6 +10,7 @@ using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Helpers;
 using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
+using IC_Loader_Pro.ViewModels;
 using IC_Rules_2025;
 using Microsoft.Office.Interop.Outlook;
 using System;
@@ -196,6 +197,7 @@ namespace IC_Loader_Pro
             await ClearManuallyLoadedLayersAsync();
             IsEmailActionEnabled = false;
             _foundFileSets.Clear();
+            _allProcessedShapes.Clear();
 
             if (SelectedIcType == null || !_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
             {
@@ -256,52 +258,47 @@ namespace IC_Loader_Pro
                 switch (_currentEmailTestResult.CumulativeAction.ResultAction)
                 {
                     case TestActionResponse.Pass:
-                        // Success: Populate UI and wait for user input
+                        // 1. Store all shapes in our new master list.
+                        if (processingResult.ShapeItems?.Any() == true)
+                        {
+                            _allProcessedShapes = processingResult.ShapeItems;
+                        }
+
+                        // 2. Set up the FileSetViewModels and their default values.
                         if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
                         {
                             await RunOnUIThread(() =>
                             {
-                                _foundFileSets.Clear();
                                 foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
                                 {
-                                    _foundFileSets.Add(new ViewModels.FileSetViewModel(fs));
+                                    var fsVM = new FileSetViewModel(fs);
+                                    // Set default "UseFilter" state: true for DWG, false for shapefiles.
+                                    fsVM.UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase);
+                                    _foundFileSets.Add(fsVM);
                                 }
                             });
                         }
-                        //if (processingResult.ShapeItems?.Any() == true)
-                        //{
-                        //    await RunOnUIThread(() =>
-                        //    {
-                        //        _shapesToReview.Clear();
-                        //        foreach (var shape in processingResult.ShapeItems) { _shapesToReview.Add(shape); }
-                        //    });
-                        //    await RedrawAllShapesOnMapAsync();
-                        //    await ZoomToAllAndSiteAsync();
-                        //}
-                        if (processingResult.ShapeItems?.Any() == true)
+
+                        // 3. Calculate and populate the counts for each fileset.
+                        var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
+                        foreach (var group in shapesByFile)
                         {
-                            await RunOnUIThread(() =>
+                            var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
+                            if (fileSetVM != null)
                             {
-                                _shapesToReview.Clear();
-                                _selectedShapes.Clear();
-
-                                // Separate shapes based on the IsAutoSelected flag
-                                foreach (var shape in processingResult.ShapeItems)
-                                {
-                                    if (shape.IsAutoSelected)
-                                    {
-                                        _selectedShapes.Add(shape);
-                                    }
-                                    else
-                                    {
-                                        _shapesToReview.Add(shape);
-                                    }
-                                }
-                            });
-                            await RedrawAllShapesOnMapAsync();
-                            await ZoomToAllAndSiteAsync();
+                                fileSetVM.TotalFeatureCount = group.Count();
+                                fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
+                                fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
+                                fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
+                            }
                         }
 
+                        // 4. Call our new central refresh method. This single call now handles
+                        //    populating the UI lists and redrawing the map based on the checkbox states.
+                        await RefreshShapeListsAndMap();
+                        await ZoomToAllAndSiteAsync();
+
+                        // 5. Set the final UI state.
                         StatusMessage = "Ready for review.";
                         IsEmailActionEnabled = true;
                         break;
@@ -359,6 +356,7 @@ namespace IC_Loader_Pro
         /// </summary>
         private async Task ProcessNextEmail()
         {
+            Log.AddBlankLine();
             Log.RecordMessage(" -------------------------------------------", BisLogMessageType.Note);
             await ProcessSelectedQueueAsync();
         }
@@ -461,6 +459,14 @@ namespace IC_Loader_Pro
                 return;
             }
 
+            // Create safe copies of the lists to pass to the background thread
+            List<ShapeItem> reviewShapesCopy;
+            List<ShapeItem> selectedShapesCopy;
+            lock (_lock)
+            {
+                reviewShapesCopy = _shapesToReview.ToList();
+                selectedShapesCopy = _selectedShapes.ToList();
+            }
             // 2. The rest of the method uses QueuedTask to draw the graphics.
             await QueuedTask.Run(() =>
             {
@@ -472,20 +478,21 @@ namespace IC_Loader_Pro
 
                 graphicsLayer.RemoveElements();
 
-                foreach (var shapeItem in _shapesToReview)
+                // Use the safe copies for drawing
+                foreach (var shapeItem in reviewShapesCopy)
                 {
                     if (shapeItem.Geometry != null && !shapeItem.IsHidden)
                     {
-                         graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
+                        graphicsLayer.AddElement(shapeItem.Geometry, reviewSymbol, shapeItem.ShapeReferenceId.ToString());
                     }
                 }
 
-                foreach (var shapeItem in _selectedShapes)
+                foreach (var shapeItem in selectedShapesCopy)
                 {
                     if (shapeItem.Geometry != null && !shapeItem.IsHidden)
                     {
-                         graphicsLayer.AddElement(shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
-                    }              
+                        graphicsLayer.AddElement(shapeItem.Geometry, useSymbol, shapeItem.ShapeReferenceId.ToString());
+                    }
                 }
 
                 if (_currentSiteLocation != null)
