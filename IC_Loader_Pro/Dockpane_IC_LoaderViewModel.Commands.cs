@@ -50,6 +50,8 @@ namespace IC_Loader_Pro
         public ICommand UnhideAllCommand { get; private set; }
         public ICommand LoadFileSetCommand { get; private set; }
         public ICommand ReloadFileSetCommand { get; private set; }
+        public ICommand AddSubmissionCommand { get; private set; }
+        public ICommand CreateNewIcDeliverableCommand { get; private set; }
 
         #endregion
 

@@ -1,5 +1,6 @@
 ﻿using ArcGIS.Core.CIM;
 using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Catalog;
 using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Core.Events;
 using ArcGIS.Desktop.Core.Geoprocessing;
@@ -10,8 +11,11 @@ using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Mapping.Events;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models; // Your ICQueueSummary class
+using IC_Loader_Pro.Services;
 using IC_Loader_Pro.ViewModels;
+using IC_Loader_Pro.Views;
 using IC_Rules_2025;
+using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -22,7 +26,9 @@ using System.Threading.Tasks;
 using System.Windows.Data;
 using System.Windows.Input;
 using static BIS_Log;
-using static IC_Loader_Pro.Module1; // For  Log
+using static IC_Loader_Pro.Module1;
+using Action = System.Action;
+using Exception = System.Exception; // For  Log
 
 namespace IC_Loader_Pro
 {
@@ -219,7 +225,9 @@ namespace IC_Loader_Pro
             HideSelectionCommand = new RelayCommand(async () => await OnHideSelectionAsync(),() => SelectedShapesForReview.Any() || SelectedShapesToUse.Any());
             UnhideAllCommand = new RelayCommand(async () => await OnUnhideAllAsync());
             LoadFileSetCommand = new RelayCommand(async (param) => await OnLoadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel fs && !fs.IsLoadedInMap);
-            ReloadFileSetCommand = new RelayCommand(async (param) => await OnReloadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel);
+            ReloadFileSetCommand = new RelayCommand(async (param) => await OnReloadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel fs && fs.IsLoadedInMap);
+            AddSubmissionCommand = new RelayCommand(async () => await OnAddSubmissionAsync(), () => IsUIEnabled);
+            CreateNewIcDeliverableCommand = new RelayCommand(async () => await OnCreateNewIcDeliverableAsync(), () => IsUIEnabled);
         }
         #endregion
      
@@ -261,60 +269,130 @@ namespace IC_Loader_Pro
 
         private async Task RefreshShapeListsAndMap()
         {
+            // This is the ONLY method that manages the flag.
             if (_isRefreshingShapes) return;
 
             try
             {
-                _isRefreshingShapes = true;
+                _isRefreshingShapes = true; // Set the flag
 
-                // The UI thread must acquire the lock before modifying the collections
+                Log.RecordMessage("--- Refreshing Shape Lists and Map ---", BisLogMessageType.Note);
                 lock (_lock)
                 {
                     _shapesToReview.Clear();
                     _selectedShapes.Clear();
-
                     var fileSetLookup = _foundFileSets.ToDictionary(fs => fs.FileName);
-
                     foreach (var shape in _allProcessedShapes)
                     {
                         if (fileSetLookup.TryGetValue(shape.SourceFile, out var parentFileSet))
                         {
-                            if (!parentFileSet.ShowInMap)
-                            {
-                                continue;
-                            }
-
-                            // --- THIS IS THE CORRECTED FILTER LOGIC ---
+                            if (!parentFileSet.ShowInMap) continue;
                             if (parentFileSet.UseFilter)
                             {
-                                // If filter is ON, only show auto-selected shapes.
-                                if (shape.IsAutoSelected)
-                                {
-                                    _selectedShapes.Add(shape);
-                                }
-                                // Any shape that is not auto-selected is now hidden.
+                                if (shape.IsAutoSelected) _selectedShapes.Add(shape);
                             }
                             else
                             {
-                                // If filter is OFF, separate shapes normally.
-                                if (shape.IsAutoSelected)
-                                {
-                                    _selectedShapes.Add(shape);
-                                }
-                                else
-                                {
-                                    _shapesToReview.Add(shape);
-                                }
+                                if (shape.IsAutoSelected) _selectedShapes.Add(shape);
+                                else _shapesToReview.Add(shape);
                             }
                         }
                     }
-                } // The lock is released here
+                }
+                Log.RecordMessage($"--- Refresh Complete. Review: {_shapesToReview.Count}, Selected: {_selectedShapes.Count} ---", BisLogMessageType.Note);
 
                 await RedrawAllShapesOnMapAsync();
             }
             finally
             {
-                _isRefreshingShapes = false;
+                _isRefreshingShapes = false; // ALWAYS clear the flag
+            }
+        }
+
+        //private async Task RefreshShapeListsAndMap()
+        //{
+        //    if (_isRefreshingShapes) return;
+
+        //    try
+        //    {
+        //        _isRefreshingShapes = true;
+
+        //        // The UI thread must acquire the lock before modifying the collections
+        //        lock (_lock)
+        //        {
+        //            _shapesToReview.Clear();
+        //            _selectedShapes.Clear();
+
+        //            var fileSetLookup = _foundFileSets.ToDictionary(fs => fs.FileName);
+
+        //            foreach (var shape in _allProcessedShapes)
+        //            {
+        //                if (fileSetLookup.TryGetValue(shape.SourceFile, out var parentFileSet))
+        //                {
+        //                    if (!parentFileSet.ShowInMap)
+        //                    {
+        //                        continue;
+        //                    }
+
+        //                    // --- THIS IS THE CORRECTED FILTER LOGIC ---
+        //                    if (parentFileSet.UseFilter)
+        //                    {
+        //                        // If filter is ON, only show auto-selected shapes.
+        //                        if (shape.IsAutoSelected)
+        //                        {
+        //                            _selectedShapes.Add(shape);
+        //                        }
+        //                        // Any shape that is not auto-selected is now hidden.
+        //                    }
+        //                    else
+        //                    {
+        //                        // If filter is OFF, separate shapes normally.
+        //                        if (shape.IsAutoSelected)
+        //                        {
+        //                            _selectedShapes.Add(shape);
+        //                        }
+        //                        else
+        //                        {
+        //                            _shapesToReview.Add(shape);
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //        } // The lock is released here
+
+        //        await RedrawAllShapesOnMapAsync();
+        //    }
+        //    finally
+        //    {
+        //        _isRefreshingShapes = false;
+        //    }
+        //}
+
+        private void UpdateFileSetCounts()
+        {
+            // Group all processed shapes by their source file
+            var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
+
+            // First, reset counts for all filesets in case one was emptied
+            foreach (var fsVM in _foundFileSets)
+            {
+                fsVM.TotalFeatureCount = 0;
+                fsVM.FilteredCount = 0;
+                fsVM.ValidFeatureCount = 0;
+                fsVM.InvalidFeatureCount = 0;
+            }
+
+            // Now, calculate and set the new counts
+            foreach (var group in shapesByFile)
+            {
+                var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
+                if (fileSetVM != null)
+                {
+                    fileSetVM.TotalFeatureCount = group.Count();
+                    fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
+                    fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
+                    fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
+                }
             }
         }
 
@@ -322,10 +400,10 @@ namespace IC_Loader_Pro
 
         private async void FileSetViewModel_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            // If a Show or Filter checkbox changes, refresh everything.
+            // If a Show or Filter checkbox changes, try to refresh.
             if (e.PropertyName == nameof(FileSetViewModel.ShowInMap) || e.PropertyName == nameof(FileSetViewModel.UseFilter))
             {
-                // Use the busy flag to prevent the crash
+                // This method now ONLY checks the flag. It does not set it.
                 if (_isRefreshingShapes) return;
                 await RefreshShapeListsAndMap();
             }
@@ -883,6 +961,7 @@ namespace IC_Loader_Pro
                 {
                     fileSetVM.IsLoadedInMap = true;
                     (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (ReloadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 });
             }
         }
@@ -906,42 +985,359 @@ namespace IC_Loader_Pro
                         fsVM.IsLoadedInMap = false;
                     }
                     (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (ReloadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 });
             });
         }
 
-        private void PerformCleanup()
+        private async Task PerformCleanupAsync()
         {
-            // If there's a path from a previous run, delete that folder now.
-            if (!string.IsNullOrEmpty(_pathForNextCleanup))
+            if (string.IsNullOrEmpty(_pathForNextCleanup)) return;
+
+            // Make a local copy of the path in case the app state changes
+            string pathToClean = _pathForNextCleanup;
+            _pathForNextCleanup = null; // Clear the field immediately
+
+            if (!Directory.Exists(pathToClean)) return;
+
+            // Retry logic to give Pro time to release file locks
+            for (int i = 0; i < 5; i++) // Try up to 5 times
             {
                 try
                 {
-                    if (Directory.Exists(_pathForNextCleanup))
-                    {
-                        Directory.Delete(_pathForNextCleanup, true);
-                    }
+                    Directory.Delete(pathToClean, true);
+                    Log.RecordMessage($"Successfully cleaned up temp folder: {pathToClean}", BisLogMessageType.Note);
+                    return; // Exit successfully
                 }
                 catch (Exception ex)
                 {
-                    Log.RecordError($"Failed to delete previous temp folder: {_pathForNextCleanup}", ex, "PerformCleanup");
-                }
-                finally
-                {
-                    // Clear the path regardless of success or failure.
-                    _pathForNextCleanup = null;
+                    Log.RecordError($"Cleanup attempt {i + 1} failed for {pathToClean}. Retrying in 250ms...", ex, "PerformCleanupAsync");
+                    await Task.Delay(250); // Wait a moment before retrying
                 }
             }
+            Log.RecordError($"Failed to delete temp folder {pathToClean} after multiple retries.", null, "PerformCleanupAsync");
         }
 
         private async Task OnReloadFileSetAsync(FileSetViewModel fileSetVM)
         {
+            if (fileSetVM == null || _isRefreshingShapes) return;
+
             Log.RecordMessage($"Reload requested for fileset: {fileSetVM.FileName}", BisLogMessageType.Note);
-            // TODO: This is a complex operation that requires refactoring the feature
-            // processing logic to run for a single fileset.
-            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Reload functionality is not yet implemented.", "Coming Soon");
-            await Task.CompletedTask;
+
+            // This method no longer needs its own try/finally or to manage the busy flag.
+
+            // 1. If the layer is on the map, remove it to invalidate Pro's cache.
+            if (fileSetVM.IsLoadedInMap)
+            {
+                await QueuedTask.Run(() =>
+                {
+                    var layerToRemove = _manuallyLoadedLayers.FirstOrDefault(l => l.Name.Equals(fileSetVM.Model.fileName, StringComparison.OrdinalIgnoreCase));
+                    if (layerToRemove != null)
+                    {
+                        MapView.Active?.Map.RemoveLayer(layerToRemove);
+                        _manuallyLoadedLayers.Remove(layerToRemove);
+                    }
+                });
+
+                await FrameworkApplication.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    fileSetVM.IsLoadedInMap = false;
+                    (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (ReloadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                });
+            }
+
+            // 2. Remove all old shapes for this fileset from the master list.
+            _allProcessedShapes.RemoveAll(s => s.SourceFile == fileSetVM.FileName);
+
+            // 3. Re-process the single fileset.
+            var namedTests = new IcNamedTests(Module1.Log, Module1.PostGreTool);
+            var featureService = new FeatureProcessingService(Module1.IcRules, namedTests, Module1.Log);
+            var reloadTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", fileSetVM.FileName, IcTestResult.TestType.Submission);
+
+            List<ShapeItem> reloadedShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(
+                new List<fileset> { fileSetVM.Model },
+                SelectedIcType.Name,
+                _currentSiteLocation,
+                reloadTestResult);
+
+            // 4. Add the newly processed shapes back to the master list.
+            if (reloadedShapes.Any())
+            {
+                _allProcessedShapes.AddRange(reloadedShapes);
+            }
+
+            // 5. Update the counts in the UI.
+            UpdateFileSetCounts();
+
+            // --- THIS IS THE CORRECTED LINE ---
+            // Use BeginInvoke to schedule the refresh and break the async context,
+            // which can solve stubborn UI update issues.
+            //FrameworkApplication.Current.Dispatcher.BeginInvoke( new Action(async () => await RefreshShapeListsAndMap()));
+            await RefreshShapeListsAndMap();
         }
+
+        //private async Task OnReloadFileSetAsync(FileSetViewModel fileSetVM)
+        //{
+        //    // We only check the flag here to prevent starting a reload if another refresh is already running.
+        //    if (fileSetVM == null || _isRefreshingShapes) return;
+
+        //    Log.RecordMessage($"Reload requested for fileset: {fileSetVM.FileName}", BisLogMessageType.Note);
+
+        //    // 1. If the layer is on the map, remove it to invalidate Pro's cache.
+        //    if (fileSetVM.IsLoadedInMap)
+        //    {
+        //        await QueuedTask.Run(() =>
+        //        {
+        //            var layerToRemove = _manuallyLoadedLayers.FirstOrDefault(l => l.Name.Equals(fileSetVM.Model.fileName, StringComparison.OrdinalIgnoreCase));
+        //            if (layerToRemove != null)
+        //            {
+        //                MapView.Active?.Map.RemoveLayer(layerToRemove);
+        //                _manuallyLoadedLayers.Remove(layerToRemove);
+        //            }
+        //        });
+
+        //        await FrameworkApplication.Current.Dispatcher.InvokeAsync(() =>
+        //        {
+        //            fileSetVM.IsLoadedInMap = false;
+        //            (LoadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        //            (ReloadFileSetCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        //        });
+        //    }
+
+        //    // 2. Remove all old shapes for this fileset from the master list.
+        //    _allProcessedShapes.RemoveAll(s => s.SourceFile == fileSetVM.FileName);
+
+        //    // 3. Re-process the single fileset.
+        //    var namedTests = new IcNamedTests(Module1.Log, Module1.PostGreTool);
+        //    var featureService = new FeatureProcessingService(Module1.IcRules, namedTests, Module1.Log);
+        //    var reloadTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", fileSetVM.FileName, IcTestResult.TestType.Submission);
+
+        //    List<ShapeItem> reloadedShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(
+        //        new List<fileset> { fileSetVM.Model },
+        //        SelectedIcType.Name,
+        //        _currentSiteLocation,
+        //        reloadTestResult);
+
+        //    // 4. Add the newly processed shapes back to the master list.
+        //    if (reloadedShapes.Any())
+        //    {
+        //        _allProcessedShapes.AddRange(reloadedShapes);
+        //    }
+
+        //    // 5. Update the counts in the UI.
+        //    UpdateFileSetCounts();
+
+        //    // 6. Refresh the data grids and the map. 
+
+        //    await RefreshShapeListsAndMap();
+        //}
+
+        private async Task OnAddSubmissionAsync()
+        {
+            //var browseFilter = new BrowseProjectFilter();//("esri_browseDialogFilters_shapefiles_all", "esri_browseDialogFilters_cad_all")
+            //browseFilter.AddCanBeTypeId("shapefile_general");
+            //browseFilter.AddCanBeTypeId("cad_general");
+            //{
+            //    Name = "GIS Files (Shapefile, DWG)" // This name appears in the file type dropdown
+            //};
+            // Use ArcGIS Pro's Open Item dialog for a native look and feel
+            var openDialog = new OpenItemDialog
+            {
+                Title = "Add Submission Fileset",
+                MultiSelect = false,
+                //BrowseFilter = browseFilter
+            };
+
+            if (openDialog.ShowDialog() != true)
+            {
+                return; // User canceled
+            }
+
+            // Get the selected item (which could be a shapefile or a DWG)
+            var selectedItem = openDialog.Items.FirstOrDefault();
+            if (selectedItem == null) return;
+
+            Log.RecordMessage($"User selected file to add: {selectedItem.Path}", BisLogMessageType.Note);
+
+            // We need to copy the entire fileset to our current email's temp folder
+            // to ensure it's processed and cleaned up correctly.
+            if (string.IsNullOrEmpty(_pathForNextCleanup))
+            {
+                // If no email is active, we can't add a submission.
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Please process an email before adding a manual submission.", "No Active Email");
+                return;
+            }
+
+            try
+            {
+                _isRefreshingShapes = true;
+
+                // Create a fileset object representing the source data
+                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory(Path.GetDirectoryName(selectedItem.Path),"",false)
+                                        .FirstOrDefault(fs => fs.fileName.Equals(Path.GetFileNameWithoutExtension(selectedItem.Name), StringComparison.OrdinalIgnoreCase));
+
+                if (sourceFileSet == null)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not identify a valid fileset for '{selectedItem.Name}'.", "Fileset Error");
+                    return;
+                }
+
+                // Copy all component files of the fileset to our active temp directory
+                foreach (var ext in sourceFileSet.extensions)
+                {
+                    string sourceFile = Path.Combine(sourceFileSet.path, $"{sourceFileSet.fileName}.{ext}");
+                    string destFile = Path.Combine(_pathForNextCleanup, $"{sourceFileSet.fileName}.{ext}");
+                    if (File.Exists(sourceFile))
+                    {
+                        File.Copy(sourceFile, destFile, true);
+                    }
+                }
+
+                // Now, create a new fileset model pointing to the copied location
+                var newFileSetInTemp = new fileset
+                {
+                    fileName = sourceFileSet.fileName,
+                    filesetType = sourceFileSet.filesetType,
+                    path = _pathForNextCleanup, // IMPORTANT: Use the active temp path
+                    extensions = sourceFileSet.extensions,
+                    validSet = sourceFileSet.validSet
+                };
+
+                // Create a view model for the new fileset and add it to the UI
+                var fileSetVM = new FileSetViewModel(newFileSetInTemp)
+                {
+                    UseFilter = !newFileSetInTemp.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase)
+                };
+                _foundFileSets.Add(fileSetVM);
+
+                // Re-process the newly added fileset
+                var namedTests = new IcNamedTests(Module1.Log, Module1.PostGreTool);
+                var featureService = new FeatureProcessingService(Module1.IcRules, namedTests, Module1.Log);
+                var processTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", fileSetVM.FileName, IcTestResult.TestType.Submission);
+
+                List<ShapeItem> newShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(
+                    new List<fileset> { newFileSetInTemp },
+                    SelectedIcType.Name,
+                    _currentSiteLocation,
+                    processTestResult);
+
+                // Add the new shapes to our master list and refresh everything
+                if (newShapes.Any())
+                {
+                    _allProcessedShapes.AddRange(newShapes);
+                }
+                UpdateFileSetCounts();
+                await RefreshShapeListsAndMap();
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Failed to add manual submission.", ex, nameof(OnAddSubmissionAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An error occurred while adding the submission: {ex.Message}", "Error");
+            }
+            finally
+            {
+                _isRefreshingShapes = false;
+            }
+        }
+
+        private async Task OnCreateNewIcDeliverableAsync()
+        {
+            // 1. Create an instance of the new window and its ViewModel
+            var viewModel = new ViewModels.CreateIcDeliverableViewModel();
+            var window = new CreateIcDeliverableWindow
+            {
+                DataContext = viewModel,
+                Owner = FrameworkApplication.Current.MainWindow // This makes it a dialog of the main Pro window
+            };
+
+            // 2. Show the window and wait for the user to click "Create" or "Cancel"
+            if (window.ShowDialog() != true)
+            {
+                return; // User canceled
+            }
+
+            // 3. If the user clicked "Create", get the data from the ViewModel
+            string selectedIcType = viewModel.SelectedIcType;
+            string prefId = viewModel.PrefId;
+            string selectedFilePath = viewModel.GisFilePath;
+
+            Log.RecordMessage($"User initiated new deliverable. Type: {selectedIcType}, PrefID: {prefId}, File: {selectedFilePath}", BisLogMessageType.Note);
+
+            // An active email process must exist to have a temp folder to copy into.
+            // If not, we create a new one for this manual submission.
+            if (string.IsNullOrEmpty(_pathForNextCleanup))
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string addinTempRoot = Path.Combine(localAppData, "IC_Loader_Pro_Temp");
+                Directory.CreateDirectory(addinTempRoot);
+                _pathForNextCleanup = Path.Combine(addinTempRoot, Guid.NewGuid().ToString());
+                Directory.CreateDirectory(_pathForNextCleanup);
+            }
+
+            try
+            {
+                _isRefreshingShapes = true;
+
+                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory(Path.GetDirectoryName(selectedFilePath), "", false)
+                                        .FirstOrDefault(fs => fs.fileName.Equals(Path.GetFileNameWithoutExtension(selectedFilePath), StringComparison.OrdinalIgnoreCase));
+
+                if (sourceFileSet == null)
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not identify a valid fileset for '{Path.GetFileName(selectedFilePath)}'.", "Fileset Error");
+                    return;
+                }
+
+                // ... The rest of the processing logic is the same as before ...
+                foreach (var ext in sourceFileSet.extensions)
+                {
+                    string sourceFile = Path.Combine(sourceFileSet.path, $"{sourceFileSet.fileName}.{ext}");
+                    string destFile = Path.Combine(_pathForNextCleanup, $"{sourceFileSet.fileName}.{ext}");
+                    if (File.Exists(sourceFile)) File.Copy(sourceFile, destFile, true);
+                }
+
+                var newFileSetInTemp = new fileset
+                {
+                    fileName = sourceFileSet.fileName,
+                    filesetType = sourceFileSet.filesetType,
+                    path = _pathForNextCleanup,
+                    extensions = sourceFileSet.extensions,
+                    validSet = sourceFileSet.validSet
+                };
+
+                var fileSetVM = new FileSetViewModel(newFileSetInTemp)
+                {
+                    UseFilter = !newFileSetInTemp.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase)
+                };
+                _foundFileSets.Add(fileSetVM);
+
+                var namedTests = new IcNamedTests(Module1.Log, Module1.PostGreTool);
+                var featureService = new FeatureProcessingService(Module1.IcRules, namedTests, Module1.Log);
+                // We need a site location for validation. Let's get it now.
+                var siteLocation = await GetSiteCoordinatesAsync(prefId);
+                var processTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", fileSetVM.FileName, IcTestResult.TestType.Submission);
+
+                List<ShapeItem> newShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(
+                    new List<fileset> { newFileSetInTemp }, selectedIcType, siteLocation, processTestResult);
+
+                if (newShapes.Any())
+                {
+                    _allProcessedShapes.AddRange(newShapes);
+                }
+                UpdateFileSetCounts();
+                await RefreshShapeListsAndMap();
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Failed to add manual submission.", ex, nameof(OnCreateNewIcDeliverableAsync));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"An error occurred while adding the submission: {ex.Message}", "Error");
+            }
+            finally
+            {
+                _isRefreshingShapes = false;
+            }
+        }
+
 
         #endregion
     }

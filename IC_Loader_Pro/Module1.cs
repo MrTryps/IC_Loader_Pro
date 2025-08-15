@@ -5,6 +5,7 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using IC_Rules_2025;
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -149,7 +150,7 @@ namespace IC_Loader_Pro
                 System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
                 _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
             }
-
+            CleanupOrphanedTempFolders();
             ProjectClosingEvent.Subscribe(OnProjectClosing);
 
             // Return a completed task.
@@ -199,6 +200,29 @@ namespace IC_Loader_Pro
             });
         }
 
+        private void CleanupOrphanedTempFolders()
+        {
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string addinTempRoot = Path.Combine(localAppData, "IC_Loader_Pro_Temp");
+
+                if (Directory.Exists(addinTempRoot))
+                {
+                    Log.RecordMessage("Performing startup cleanup of temporary files...", BIS_Log.BisLogMessageType.Note);
+                    // Delete all subdirectories (the GUID folders) but leave the root folder.
+                    foreach (var directory in Directory.GetDirectories(addinTempRoot))
+                    {
+                        Directory.Delete(directory, true);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error but don't prevent the add-in from loading.
+                Log.RecordError("An error occurred during startup cleanup of temporary folders.", ex, "CleanupOrphanedTempFolders");
+            }
+        }
         #endregion Overrides
 
     }

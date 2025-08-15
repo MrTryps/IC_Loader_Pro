@@ -193,7 +193,7 @@ namespace IC_Loader_Pro
         private async Task ProcessSelectedQueueAsync()
         {
             // --- 1. Initial UI and Configuration Setup ---
-            PerformCleanup();
+            await PerformCleanupAsync();
             await ClearManuallyLoadedLayersAsync();
             IsEmailActionEnabled = false;
             _foundFileSets.Clear();
@@ -280,18 +280,20 @@ namespace IC_Loader_Pro
                         }
 
                         // 3. Calculate and populate the counts for each fileset.
-                        var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
-                        foreach (var group in shapesByFile)
-                        {
-                            var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
-                            if (fileSetVM != null)
-                            {
-                                fileSetVM.TotalFeatureCount = group.Count();
-                                fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
-                                fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
-                                fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
-                            }
-                        }
+                        UpdateFileSetCounts();
+
+                        //var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
+                        //foreach (var group in shapesByFile)
+                        //{
+                        //    var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
+                        //    if (fileSetVM != null)
+                        //    {
+                        //        fileSetVM.TotalFeatureCount = group.Count();
+                        //        fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
+                        //        fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
+                        //        fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
+                        //    }
+                        //}
 
                         // 4. Call our new central refresh method. This single call now handles
                         //    populating the UI lists and redrawing the map based on the checkbox states.

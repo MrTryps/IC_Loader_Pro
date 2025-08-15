@@ -118,7 +118,7 @@ namespace IC_Loader_Pro.Services
 
 
                 // Step 2: Identify logical GIS filesets from the entire folder content.
-                analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
+                analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType,true);
                 foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
                 {
                     var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
