@@ -59,65 +59,61 @@ namespace IC_Loader_Pro
         private async Task OnSave()
         {
             Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
-            Outlook.Application outlookApp = null;
+
             if (_currentEmailTestResult == null)
             {
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("There is no processed email result to save.", "Save Error");
                 return;
             }
 
-            // 1. Update stats and disable UI buttons.
-            IsEmailActionEnabled = false;
-            StatusMessage = "Finalizing and saving to database...";
-            
+            IsEmailActionEnabled = false; // Disable all action buttons
+            StatusMessage = "Creating deliverable record in the database...";
+
+            string newDelId = null;
             try
             {
-                outlookApp = new Outlook.Application();
-                // 2. Call the finalization service.
-                var namedTests = new IcNamedTests(Log, PostGreTool);
-                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+                // 1. Create an instance of our new service.
+                var deliverableService = new Services.DeliverableService();
 
-                string newDelId = await processingService.FinalizeAndSaveAsync(_currentEmailTestResult, _currentAttachmentAnalysis);
+                // 2. Call the method to create the record and get the new ID.
+                //    We assume the source is an email for now.
+                newDelId = await deliverableService.CreateNewDeliverableRecordAsync("EMAIL");
 
-                // Update the UI with the new Deliverable ID.
+                // 3. Update the UI with the new ID.
                 CurrentDelId = newDelId;
-                StatusMessage = "Successfully saved submission.";
+                StatusMessage = $"Successfully created Deliverable ID: {newDelId}";
+                Log.RecordMessage(StatusMessage, BisLogMessageType.Note);
 
-                // 3. Move the processed email.
-                var outlookService = new OutlookService();
-                string fullOutlookPath = _currentIcSetting.OutlookInboxFolderPath;
-                var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
+                if (Module1.IsInTestMode)
+                {
+                    var notesService = new Services.NotesService();
+                    await notesService.RecordNoteAsync(newDelId, "This is a test deliverable created in Test Mode.", "Automation Note");
+                    Log.RecordMessage($"Recorded 'Test Mode' note for deliverable {newDelId}.", BisLogMessageType.Note);
+                }
 
-                outlookService.MoveEmailToFolder(
-                    outlookApp,
-                    CurrentEmailId,
-                    folderPath,
-                    storeName,
-                    _currentIcSetting.OutlookProcessedFolderPath
-                );
+                // --- FUTURE STEPS WILL GO HERE ---
+
+                // TODO: Record contact info
+                // TODO:
+                // TODO: Save the IcTestResult hierarchy to the database, linked to newDelId.
+                // TODO: Save the selected ShapeItems to the final feature class, linked to newDelId.
+                // TODO: Move the processed email to the 'Processed' folder.
+                // ---
             }
             catch (Exception ex)
             {
-                Log.RecordError("An error occurred during the save process.", ex, nameof(OnSave));
+                Log.RecordError("An error occurred while creating the new deliverable record.", ex, nameof(OnSave));
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
                     "An error occurred while saving the submission. Please check the logs.",
                     "Save Error");
-                // If save fails, roll back the "Passed" count.
-                //SelectedIcType.PassedCount--;
-            }
-            finally
-            {
-                // Ensure the Outlook application is released properly.
-                if (outlookApp != null)
-                {
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
-                    outlookApp = null;
-                }
+                StatusMessage = "Save failed. Please review logs.";
+                IsEmailActionEnabled = true; // Re-enable buttons on failure
+                return; // Stop the save process
             }
 
+            // If the save was successful, update the stats and advance to the next email.
             SelectedIcType.PassedCount++;
 
-            // 4. Advance to the next email.
             if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
             {
                 emailsToProcess.RemoveAt(0);

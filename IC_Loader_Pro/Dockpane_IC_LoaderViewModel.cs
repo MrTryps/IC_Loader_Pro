@@ -179,12 +179,30 @@ namespace IC_Loader_Pro
             get => _invalidFeatureCount;
             set => SetProperty(ref _invalidFeatureCount, value);
         }
+
+        private bool _isInTestMode;
+        public bool IsInTestMode
+        {
+            get => _isInTestMode;
+            set
+            {
+                if (SetProperty(ref _isInTestMode, value))
+                {
+                    // Update the global flag
+                    Module1.IsInTestMode = value;
+                    // Refresh the email queues to reflect the new mode
+                    _ = RefreshICQueuesAsync();
+                }
+            }
+        }
+
         #endregion
 
         #region Constructor
         protected Dockpane_IC_LoaderViewModel()
         {
-           
+            _isInTestMode = Module1.IsInTestMode;
+
             // Create the public, read-only collection that the UI will bind to
             _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
             _readOnlyFoundFileSets = new ReadOnlyObservableCollection<FileSetViewModel>(_foundFileSets);
@@ -195,6 +213,7 @@ namespace IC_Loader_Pro
             SelectedShapesForReview.CollectionChanged += OnSelectionChanged;
             SelectedShapesToUse.CollectionChanged += OnSelectionChanged;
             _foundFileSets.CollectionChanged += FoundFileSets_CollectionChanged;
+            _selectedShapes.CollectionChanged += SelectedShapes_CollectionChanged;
 
 
             // This is a key step. It allows a background thread to safely update a collection that the UI is bound to.
@@ -204,7 +223,7 @@ namespace IC_Loader_Pro
 
             // Initialize commands
             RefreshQueuesCommand = new RelayCommand(async () => await RefreshICQueuesAsync(), () => IsUIEnabled);
-            SaveCommand = new RelayCommand(async () => await OnSave(), () => IsEmailActionEnabled);
+            SaveCommand = new RelayCommand(async () => await OnSave(),() => IsEmailActionEnabled && _selectedShapes.Any());
             SkipCommand = new RelayCommand(async () => await OnSkip(), () => IsEmailActionEnabled);
             RejectCommand = new RelayCommand(async () => await OnReject(), () => IsEmailActionEnabled);
             ShowNotesCommand = new RelayCommand(async () => await OnShowNotes(), () => IsUIEnabled);
@@ -427,7 +446,11 @@ namespace IC_Loader_Pro
             }
         }
 
-
+        private void SelectedShapes_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            // Tell the Save button to re-evaluate its enabled/disabled state
+            (SaveCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
 
 
         private void SelectedShapesForReview_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)

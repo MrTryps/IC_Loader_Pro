@@ -150,8 +150,7 @@ namespace IC_Loader_Pro
                     // true  = Filter FOR emails from the test sender only.
                     // false = Filter OUT emails from the test sender.
                     // null  = Disable test filtering.
-                    bool? testModeFlag = true;
-
+                    
                     if (string.IsNullOrEmpty(outlookFolderPath))
                     {
                         Log.RecordMessage($"Skipping queue '{icType}' because OutlookFolderPath is not configured.", BisLogMessageType.Warning);
@@ -162,13 +161,13 @@ namespace IC_Loader_Pro
                     if (useGraphApi)
                     {
                         // Await the async Graph call directly. No .Result.
-                        emailsInQueue = await graphService.GetEmailsFromFolderPathAsync(outlookApp,outlookFolderPath, testSender, testModeFlag);
+                        emailsInQueue = await graphService.GetEmailsFromFolderPathAsync(outlookApp,outlookFolderPath, testSender, Module1.IsInTestMode);
                     }
                     else
                     {
                         // Use QueuedTask.Run to move the synchronous Outlook Interop call off the UI thread.
                         emailsInQueue = await QueuedTask.Run(() =>
-                            outlookService.GetEmailsFromFolderPath(outlookApp,outlookFolderPath, testSender, testModeFlag));
+                            outlookService.GetEmailsFromFolderPath(outlookApp,outlookFolderPath, testSender, Module1.IsInTestMode));
                     }
 
                     queues[icType] = emailsInQueue;

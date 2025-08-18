@@ -24,47 +24,22 @@ namespace IC_Loader_Pro
         private static Bis_Regex _regexTool = null;
         private static BisFileTools _fileTool = null;
 
-        /// <summary>
-        /// Retrieve the singleton instance to this module here
-        /// </summary>
-        /// 
-
-        #region Public Static Properties (Service Accessors)
-
-        /// <summary>
-        /// Retrieve the singleton instance of this module.
-        /// </summary>
+        #region Public Static Properties
         public static Module1 Current => _this;
-
-        /// <summary>
-        /// Retrieve the singleton instance of the Log service.
-        /// Guaranteed to be available after the module has been initialized.
-        /// </summary>
         public static BIS_Log Log => _log;
-
-        /// <summary>
-        /// Retrieve the singleton instance of the business rules engine.
-        /// Guaranteed to be available after the module has been initialized.
-        /// </summary>
         public static IC_Rules IcRules => _icRules;
-
-        /// <summary>
-        /// Retrieve the singleton instance of the PostgreSQL database tools.
-        /// Guaranteed to be available after the module has been initialized.
-        /// </summary>
         public static BIS_DB_PostGre PostGreTool => _postGreTool;
-
         public static BisDbNjems NjemsTool => _njemsTool;
         public static BisDbCompass CompassTool => _compassTool;
         public static BisDbAccess AccessTool => _accessTool;
-
-        /// <summary>
-        /// Retrieve the singleton instance of the Regex service.
-        /// </summary>
         public static Bis_Regex RegexTool => _regexTool;
-
         public static BisFileTools FileTool => _fileTool;
 
+#if DEBUG
+        public static bool IsInTestMode { get; set; } = true;
+#else
+            public static bool IsInTestMode { get; set; } = false;
+#endif
         #endregion
 
         #region Overrides
@@ -76,84 +51,33 @@ namespace IC_Loader_Pro
         /// <returns>A Task that represents the initialization process.</returns>
         protected override bool Initialize()
         {
-            // First, set the singleton instance of the module.
             _this = this;
 
-            // Second, create instances of all core, shared services.
-            // By doing this here, we guarantee they are ready before any UI
-            // component (like a dockpane) is created or shown.
-
-            // Initialize the Logger
             try
             {
-            _log = new BIS_Log("IC_Loader_Pro");
-            }
-            catch(Exception ex){
-                // This is a critical failure. The logger could not be created.
-                // We can't use our logger, so we fall back to Debug output and a message box.
-                System.Diagnostics.Debug.WriteLine($"FATAL: The Logging service failed to initialize. No further logging is possible. Exception: {ex}");
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"The application could not start because the logging service failed to initialize.{Environment.NewLine}{ex.Message}", "Critical Initialization Error");
-                return false; // Stop the initialization process.
-            }
-
-            System.Diagnostics.Debug.WriteLine("Module.Initialize: BIS_Log service created.");
-
-            try
-            {
+                _log = new BIS_Log("IC_Loader_Pro");
                 _fileTool = new BisFileTools(_log);
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError("FATAL: Failed to create BisFileTools service.", ex, nameof(Initialize));
-                return false;
-            }
-
-            // Initialize the Regex Tool
-            try
-            {
                 _regexTool = new Bis_Regex(_log);
+                _postGreTool = new BIS_DB_PostGre(_log);
+                _njemsTool = new BisDbNjems(_log);
+                _compassTool = new BisDbCompass(_log);
+                _accessTool = new BisDbAccess(_log);
+                _icRules = new IC_Rules(_log, _postGreTool, _compassTool, _njemsTool, _accessTool, _fileTool, _regexTool);
+
+                CleanupOrphanedTempFolders();
             }
             catch (Exception ex)
             {
-                _log.RecordError("FATAL: Failed to create Bis_Regex service in Module.Initialize", ex, nameof(Initialize));
+                string errorMessage = "A critical error occurred during add-in initialization and it cannot be loaded. Please check the log file for details.";
+                if (_log != null)
+                {
+                    _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
+                }
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(errorMessage, "IC Loader Pro - Initialization Error");
                 return false;
             }
 
-            // Initialize the Database Tool
-            try
-            {
-                _postGreTool = new BIS_DB_PostGre(_log);
-                System.Diagnostics.Debug.WriteLine("Module.Initialize: BIS_DB_PostGre service created successfully.");
-            }
-            catch (Exception ex)
-            {
-                // Write the full exception to both the debug output and the main log file.
-                string errorMessage = $"Failed to create BIS_DB_PostGre service in Module.Initialize";
-                System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
-                _log.RecordError($"FATAL: {errorMessage}",ex, nameof(Initialize));
-            }
-
-            _njemsTool = new BisDbNjems(_log);
-            _compassTool = new BisDbCompass(_log);
-            _accessTool = new BisDbAccess(_log);
-
-            // Initialize the Rules Engine
-            try
-            {
-                _icRules = new IC_Rules(_log, _postGreTool,_compassTool,_njemsTool,_accessTool , _fileTool,_regexTool);
-                System.Diagnostics.Debug.WriteLine("Module.Initialize: IC_Rules service created successfully.");
-            }
-            catch (Exception ex)
-            {
-                // Write the full exception to both the debug output and the main log file.
-                string errorMessage = $"Failed to create IC_Rules service in Module.Initialize";
-                System.Diagnostics.Debug.WriteLine($"FATAL: {errorMessage}");
-                _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
-            }
-            CleanupOrphanedTempFolders();
             ProjectClosingEvent.Subscribe(OnProjectClosing);
-
-            // Return a completed task.
             return true;
         }
 

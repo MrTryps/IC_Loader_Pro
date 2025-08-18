@@ -70,7 +70,7 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = rootTestResult };
             }
 
-            var subjectLineTest = _namedTests.returnNewTestResult("GIS_Email_Submission_Tests", "-1", IcTestResult.TestType.Deliverable);
+            var subjectLineTest = _namedTests.returnNewTestResult("GIS_Subjectline_Tests", "-1", IcTestResult.TestType.Deliverable);
             if (wasManuallyClassified)
             {
                 subjectLineTest.AddComment($"User manually classified email as '{finalType}'.");

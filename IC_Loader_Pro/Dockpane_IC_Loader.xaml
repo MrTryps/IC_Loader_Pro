@@ -29,6 +29,9 @@
                 </Style.Triggers>
             </Style>
         </Grid.Style>
+
+
+       
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -39,7 +42,6 @@
             <RowDefinition Height="150"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -47,12 +49,40 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Menu Grid.Column="0" VerticalAlignment="Center" Background="Transparent">
-                <MenuItem Header="_Notes" Command="{Binding ShowNotesCommand}"/>
-                <MenuItem Header="_Search" Command="{Binding SearchCommand}"/>
-                <MenuItem Header="_Tools" Command="{Binding ToolsCommand}"/>
-                <MenuItem Header="_Options" Command="{Binding OptionsCommand}"/>
-            </Menu>
+            <TextBlock Grid.Row="0" Grid.ColumnSpan="3" Text="--- TEST MODE ACTIVE ---" 
+        FontWeight="Bold" 
+        Foreground="Black" 
+        Background="LightGoldenrodYellow" 
+        TextAlignment="Center" 
+        Padding="2" 
+        Margin="0,0,0,5">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsInTestMode}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Menu VerticalAlignment="Center" Background="Transparent">
+                    <MenuItem Header="_Notes" Command="{Binding ShowNotesCommand}"/>
+                    <MenuItem Header="_Search" Command="{Binding SearchCommand}"/>
+                    <MenuItem Header="_Tools" Command="{Binding ToolsCommand}"/>
+
+                    <MenuItem Header="_Options">
+                        <MenuItem Header="Test Mode"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsInTestMode}"
+                          ToolTip="When checked, only emails from the test sender will be shown."/>
+                    </MenuItem>
+
+                </Menu>
+            </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                 <ListBox ItemsSource="{Binding PublicListOfIcEmailTypeSummaries}" SelectedItem="{Binding SelectedIcType}" BorderThickness="0" Background="Transparent">
