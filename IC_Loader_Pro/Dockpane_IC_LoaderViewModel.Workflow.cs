@@ -219,6 +219,7 @@ namespace IC_Loader_Pro
                 var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
 
                 emailToProcess = await QueuedTask.Run(() => new OutlookService().GetEmailById(outlookApp, folderPath, currentEmailSummary.Emailid, storeName));
+                _currentEmail = emailToProcess;
 
                 if (emailToProcess == null)
                 {
@@ -228,6 +229,7 @@ namespace IC_Loader_Pro
                 }
 
                 var classification = new EmailClassifierService(IcRules, Log).ClassifyEmail(emailToProcess);
+                _currentClassification = classification;
 
                 EmailType finalEmailType = classification.Type;
                 if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
@@ -247,10 +249,10 @@ namespace IC_Loader_Pro
 
                 UpdateEmailInfo(emailToProcess, classification, classification.WasManuallyClassified, finalEmailType);
 
-                _currentSiteLocation = await GetSiteCoordinatesAsync(CurrentPrefId);
+                _currentSiteLocation = await GetSiteCoordinatesFromNjemsAsync(CurrentPrefId);
 
                 var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesAsync);
+                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesFromPostgreAsync);
 
                 _currentEmailTestResult = processingResult.TestResult;
 
@@ -509,7 +511,7 @@ namespace IC_Loader_Pro
         /// </summary>
         /// <param name="prefId">The Preference ID to search for.</param>
         /// <returns>A MapPoint object representing the site's location, or null if not found.</returns>
-        private async Task<MapPoint> GetSiteCoordinatesAsync(string prefId)
+        private async Task<MapPoint> GetSiteCoordinatesFromPostgreAsync(string prefId)
         {
             if (string.IsNullOrWhiteSpace(prefId) || prefId.Equals("N/A", StringComparison.OrdinalIgnoreCase))
             {
@@ -535,7 +537,74 @@ namespace IC_Loader_Pro
 
             return siteLocation;
         }
+        private async Task<MapPoint> GetSiteCoordinatesFromNjemsAsync(string prefId)
+        {
+            if (string.IsNullOrWhiteSpace(prefId) || prefId.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
 
+            Log.RecordMessage($"Querying coordinates for Pref ID: {prefId} from NJEMS.", BisLogMessageType.Note);
+            MapPoint siteLocation = null;
+            DataTable resultTable = null;
+
+            await QueuedTask.Run(() =>
+            {
+                var paramDict = new Dictionary<string, object> { { "PrefID", prefId } };
+                resultTable = Module1.NjemsTool.ExecuteNamedQuery("ReturnPrefIdCoords", paramDict) as DataTable;
+            });
+
+            if (resultTable == null || resultTable.Rows.Count == 0)
+            {
+                Log.RecordMessage($"No coordinates found in NJEMS for Pref ID: {prefId}", BisLogMessageType.Note);
+                return null;
+            }
+
+            double x = 0;
+            double y = 0;
+
+            if (resultTable.Rows.Count > 1)
+            {
+                string warningMsg = $"Multiple coordinates found in CORE_PI_COORDINATE_DETAIL for {prefId}. Using the first valid set.";
+                Log.RecordMessage(warningMsg, BisLogMessageType.Warning);
+                // Show a popup to the user on the UI thread
+                FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(warningMsg, "Multiple Coordinates Found");
+                });
+
+                // Find the first row with non-zero coordinates
+                foreach (DataRow row in resultTable.Rows)
+                {
+                    double.TryParse(row["X_COORDINATE"]?.ToString(), out double currentX);
+                    double.TryParse(row["Y_COORDINATE"]?.ToString(), out double currentY);
+                    if (currentX != 0 && currentY != 0)
+                    {
+                        x = currentX;
+                        y = currentY;
+                        break; // Use the first valid set and stop looking
+                    }
+                }
+            }
+            else
+            {
+                // Only one row was returned
+                double.TryParse(resultTable.Rows[0]["X_COORDINATE"]?.ToString(), out x);
+                double.TryParse(resultTable.Rows[0]["Y_COORDINATE"]?.ToString(), out y);
+            }
+
+            // Finally, create the MapPoint if the coordinates are valid
+            if (x != 0 && y != 0)
+            {
+                await QueuedTask.Run(() =>
+                {
+                    var sr = SpatialReferenceBuilder.CreateSpatialReference(_currentIcSetting.GeometryRules.ProjectionId);
+                    siteLocation = MapPointBuilder.CreateMapPoint(x, y, sr);
+                });
+            }
+
+            return siteLocation;
+        }
 
 
     }

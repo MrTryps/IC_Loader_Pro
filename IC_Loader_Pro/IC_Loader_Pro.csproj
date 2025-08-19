@@ -123,7 +123,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BIS_Tools_2025\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core\BIS_Tools_2025_C_Core.csproj" />
     <ProjectReference Include="..\..\..\BIS_Tools_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025\BIS_Tools_DataModels_2025.csproj" />
-    <ProjectReference Include="..\..\..\BIS_Tools_2025\IC_Rules_2025\IC_Rules_2025\IC_Rules_2025.csproj" />
+    <ProjectReference Include="..\..\..\BIS_Tools_2025\IC_Rules_2025\IC_Rules_2025\IC_Rules_2025.csproj">
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets" Condition="Exists('C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets') AND !Exists('Esri.ArcGISPro.Extensions.targets')" />
 </Project>

@@ -34,12 +34,12 @@ namespace IC_Loader_Pro
         public static BisDbAccess AccessTool => _accessTool;
         public static Bis_Regex RegexTool => _regexTool;
         public static BisFileTools FileTool => _fileTool;
-
-#if DEBUG
-        public static bool IsInTestMode { get; set; } = true;
-#else
+        
+        #if DEBUG
+            public static bool IsInTestMode { get; set; } = true;
+        #else
             public static bool IsInTestMode { get; set; } = false;
-#endif
+        #endif
         #endregion
 
         #region Overrides

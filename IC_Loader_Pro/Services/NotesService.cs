@@ -15,7 +15,7 @@ namespace IC_Loader_Pro.Services
         /// <param name="referenceId">The ID of the record to associate the comment with.</param>
         /// <param name="commentText">The text of the comment to record.</param>
         /// <param name="commentType">Optional. The type of comment to record. Defaults to "comment".</param>
-        public async Task RecordNoteAsync(string referenceId, string commentText, string commentType = "comment")
+        public async Task RecordNoteAsync(string referenceId, string commentText)
         {
             const string methodName = "RecordNoteAsync";
 
@@ -23,14 +23,14 @@ namespace IC_Loader_Pro.Services
             var paramDict = new Dictionary<string, object>
             {
                 { "ref_id", referenceId },
-                { "msg", commentText },
-                { "comment_type", commentType } // Add the new optional parameter
+                { "msg", commentText }
+               
             };
 
             try
             {
                 await Task.Run(() =>
-                    PostGreTool.ExecuteNamedQuery("recordComment", paramDict)
+                    PostGreTool.ExecuteNamedQuery("recordGisComment", paramDict)
                 );
             }
             catch (Exception ex)

@@ -74,22 +74,36 @@ namespace IC_Loader_Pro
             {
                 // 1. Create an instance of our new service.
                 var deliverableService = new Services.DeliverableService();
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
 
                 // 2. Call the method to create the record and get the new ID.
                 //    We assume the source is an email for now.
-                newDelId = await deliverableService.CreateNewDeliverableRecordAsync("EMAIL");
+                // Pass the required information to the updated method
+                newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
+                    "EMAIL",
+                    SelectedIcType.Name,
+                    CurrentPrefId,
+                    _currentEmail.ReceivedTime); ;
 
                 // 3. Update the UI with the new ID.
                 CurrentDelId = newDelId;
                 StatusMessage = $"Successfully created Deliverable ID: {newDelId}";
                 Log.RecordMessage(StatusMessage, BisLogMessageType.Note);
-
                 if (Module1.IsInTestMode)
                 {
                     var notesService = new Services.NotesService();
-                    await notesService.RecordNoteAsync(newDelId, "This is a test deliverable created in Test Mode.", "Automation Note");
+                    await notesService.RecordNoteAsync(newDelId, "This is a test deliverable created in Test Mode.");
                     Log.RecordMessage($"Recorded 'Test Mode' note for deliverable {newDelId}.", BisLogMessageType.Note);
                 }
+
+                await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, folderPath);
+                await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
+                StatusMessage = "Parsing email body...";
+                var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
+                var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
+                await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
+
+               
 
                 // --- FUTURE STEPS WILL GO HERE ---
 

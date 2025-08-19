@@ -75,6 +75,9 @@ namespace IC_Loader_Pro
         public ShapeItem SelectedShapeForReview { get; set; }
         public ShapeItem SelectedShapeToUse { get; set; }
 
+        private EmailItem _currentEmail;
+        private EmailClassificationResult _currentClassification;
+
         private string _currentEmailId;
         public string CurrentEmailId
         {
@@ -1337,7 +1340,7 @@ namespace IC_Loader_Pro
                 var namedTests = new IcNamedTests(Module1.Log, Module1.PostGreTool);
                 var featureService = new FeatureProcessingService(Module1.IcRules, namedTests, Module1.Log);
                 // We need a site location for validation. Let's get it now.
-                var siteLocation = await GetSiteCoordinatesAsync(prefId);
+                var siteLocation = await GetSiteCoordinatesFromNjemsAsync(prefId);
                 var processTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", fileSetVM.FileName, IcTestResult.TestType.Submission);
 
                 List<ShapeItem> newShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(
