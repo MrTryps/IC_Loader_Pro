@@ -255,6 +255,7 @@ namespace IC_Loader_Pro
                 EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesFromPostgreAsync);
 
                 _currentEmailTestResult = processingResult.TestResult;
+                _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
 
                 switch (_currentEmailTestResult.CumulativeAction.ResultAction)
                 {
@@ -601,6 +602,9 @@ namespace IC_Loader_Pro
                     var sr = SpatialReferenceBuilder.CreateSpatialReference(_currentIcSetting.GeometryRules.ProjectionId);
                     siteLocation = MapPointBuilder.CreateMapPoint(x, y, sr);
                 });
+
+                var coordinateService = new Services.CoordinateService();
+                await coordinateService.UpdatePrefIdCoordinatesInPostgresAsync(prefId, x, y, "NJEMS");
             }
 
             return siteLocation;

@@ -58,35 +58,43 @@ namespace IC_Loader_Pro
         #region Command Methods
         private async Task OnSave()
         {
-            Log.RecordMessage("Save button was clicked.", BisLogMessageType.Note);
-
-            if (_currentEmailTestResult == null)
+            if (_currentEmailTestResult == null || !_selectedShapes.Any())
             {
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("There is no processed email result to save.", "Save Error");
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    "There must be at least one shape in the 'Selected Shapes to Use' list to save.",
+                    "Save Error");
                 return;
             }
 
-            IsEmailActionEnabled = false; // Disable all action buttons
-            StatusMessage = "Creating deliverable record in the database...";
+            IsEmailActionEnabled = false;
+            StatusMessage = "Saving... Please wait.";
+            Log.RecordMessage("Save process started.", BisLogMessageType.Note);
+
+            var deliverableService = new Services.DeliverableService();
+            var submissionService = new Services.SubmissionService();
+            var shapeService = new Services.ShapeProcessingService();
+            var notificationService = new Services.NotificationService();
+            var outlookService = new Services.OutlookService();
+            var testResultService = new Services.TestResultService();
+            Outlook.Application outlookApp = null; // Declared here so it's accessible in the 'finally' block
 
             string newDelId = null;
             try
             {
-                // 1. Create an instance of our new service.
-                var deliverableService = new Services.DeliverableService();
-                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
-
-                // 2. Call the method to create the record and get the new ID.
-                //    We assume the source is an email for now.
-                // Pass the required information to the updated method
+                // === Step 1: Create Deliverable Record ===
+                var goodCounts = new Dictionary<string, int>();
+                var dupCounts = new Dictionary<string, int>();
+                StatusMessage = "Creating deliverable record...";
                 newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
-                    "EMAIL",
-                    SelectedIcType.Name,
-                    CurrentPrefId,
-                    _currentEmail.ReceivedTime); ;
-
-                // 3. Update the UI with the new ID.
+                    "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
                 CurrentDelId = newDelId;
+
+                // === Step 2: Save Email, Contact, and Body Data ===
+                await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
+                await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
+                var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
+                var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
+                await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
                 StatusMessage = $"Successfully created Deliverable ID: {newDelId}";
                 Log.RecordMessage(StatusMessage, BisLogMessageType.Note);
                 if (Module1.IsInTestMode)
@@ -96,23 +104,83 @@ namespace IC_Loader_Pro
                     Log.RecordMessage($"Recorded 'Test Mode' note for deliverable {newDelId}.", BisLogMessageType.Note);
                 }
 
-                await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, folderPath);
-                await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
-                StatusMessage = "Parsing email body...";
-                var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
-                var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
-                await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
 
-               
+                // === Step 3: Record Submissions (filesets) to get their IDs ===
+                StatusMessage = "Recording submissions...";
+                var submissionIdMap = await submissionService.RecordSubmissionsAsync(
+                    newDelId, SelectedIcType.Name, _currentAttachmentAnalysis.IdentifiedFileSets);
 
-                // --- FUTURE STEPS WILL GO HERE ---
+                // === Step 4: Record all individual physical files ===
+                await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
 
-                // TODO: Record contact info
-                // TODO:
-                // TODO: Save the IcTestResult hierarchy to the database, linked to newDelId.
-                // TODO: Save the selected ShapeItems to the final feature class, linked to newDelId.
-                // TODO: Move the processed email to the 'Processed' folder.
-                // ---
+                // === Step 5: Process and record each approved shape ===
+                foreach (var shapeToSave in _selectedShapes)
+                {
+                    StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
+                    string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
+                    if (string.IsNullOrEmpty(submissionId))
+                    {
+                        Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+                        continue;
+                    }
+
+                    string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
+
+                    await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
+
+                    bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
+
+                    if (isDuplicate)
+                    {
+                        if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
+                        dupCounts[submissionId]++;
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate");
+                        Log.RecordMessage($"Shape {newShapeId} was found to be a duplicate.", BisLogMessageType.Note);
+                    }
+                    else
+                    {
+                        if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
+                        goodCounts[submissionId]++;
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed");
+                    }
+
+                    // Record additional shape metadata
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler");
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite);
+
+                    // TODO: Logic for recording notes/comments for the individual shape can be added here.
+
+                    // Copy the shape's geometry into the 'proposed' feature class
+                    await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId);
+                }
+
+                // === Step 6: Move Files to Final Location ===
+                StatusMessage = "Archiving submission files...";
+                await submissionService.MoveAllSubmissionsAsync(
+                    _currentAttachmentAnalysis.IdentifiedFileSets, submissionIdMap, _currentIcSetting.AsSubmittedPath);
+
+                // === Step 7: Finalize, Notify, and Clean Up ===
+                // ... (Update counts, deliverable status, send email, move source email...)
+                foreach (var subId in submissionIdMap.Values)
+                {
+                    await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
+                }
+
+                string finalStatus = (goodCounts.Values.Sum() == 0 && dupCounts.Values.Sum() > 0) ? "Duplicate" : "Migrated";
+                await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, "Pass");
+                await testResultService.SaveTestResultsAsync(_currentEmailTestResult, newDelId);
+                await notificationService.SendConfirmationEmailAsync(newDelId);
+
+                StatusMessage = "Moving processed email...";
+                outlookApp = new Outlook.Application();
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
+                outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, folderPath, storeName, _currentIcSetting.OutlookProcessedFolderPath);
+
+                StatusMessage = $"Successfully saved submission as {newDelId}.";
+                SelectedIcType.PassedCount++;
+
             }
             catch (Exception ex)
             {
@@ -135,7 +203,7 @@ namespace IC_Loader_Pro
             await ProcessNextEmail();
         }
 
-        // Also update OnSkip and OnReject
+
         private async Task OnSkip()
         {
             Log.RecordMessage("Skip button was clicked.", BisLogMessageType.Note);

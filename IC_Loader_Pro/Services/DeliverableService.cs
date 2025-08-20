@@ -248,6 +248,47 @@ namespace IC_Loader_Pro.Services
                 throw;
             }
         }
+        public async Task UpdateDeliverableStatusAsync(string deliverableId, string status, string validity)
+        {
+            const string methodName = "UpdateDeliverableStatusAsync";
+
+            var setClauses = new List<string>();
+            var parameters = new List<object>();
+
+            // Dynamically build the SET clauses based on the provided parameters
+            if (!string.IsNullOrEmpty(status))
+            {
+                setClauses.Add("importprogress = ?");
+                parameters.Add(status);
+            }
+            if (!string.IsNullOrEmpty(validity))
+            {
+                setClauses.Add("deliverable_validity = ?");
+                parameters.Add(validity);
+            }
+
+            // Only execute the query if there is at least one field to update
+            if (!setClauses.Any())
+            {
+                Log.RecordMessage("No deliverable status fields to update.", BisLogMessageType.Note);
+                return;
+            }
+
+            // The parameter for the WHERE clause must be the LAST one added to the list
+            string sql = $"UPDATE srp_gis_deliverables SET {string.Join(", ", setClauses)} WHERE deliverable_id = ?";
+            parameters.Add(deliverableId);
+
+            try
+            {
+                await Task.Run(() => PostGreTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
+                Log.RecordMessage($"Updated status for deliverable {deliverableId}.", BisLogMessageType.Note);
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"Error updating status for Deliverable ID '{deliverableId}'.", ex, methodName);
+                throw;
+            }
+        }
 
     }
 
