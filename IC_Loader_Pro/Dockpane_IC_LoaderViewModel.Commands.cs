@@ -72,7 +72,7 @@ namespace IC_Loader_Pro
 
             var deliverableService = new Services.DeliverableService();
             var submissionService = new Services.SubmissionService();
-            var shapeService = new Services.ShapeProcessingService();
+            var shapeService = new Services.ShapeProcessingService(IcRules, Log);
             var notificationService = new Services.NotificationService();
             var outlookService = new Services.OutlookService();
             var testResultService = new Services.TestResultService();
@@ -134,26 +134,26 @@ namespace IC_Loader_Pro
                     {
                         if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
                         dupCounts[submissionId]++;
-                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate");
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
                         Log.RecordMessage($"Shape {newShapeId} was found to be a duplicate.", BisLogMessageType.Note);
                     }
                     else
                     {
                         if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
                         goodCounts[submissionId]++;
-                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed");
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
                     }
 
                     // Record additional shape metadata
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler");
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X);
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y);
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
 
                     // TODO: Logic for recording notes/comments for the individual shape can be added here.
 
                     // Copy the shape's geometry into the 'proposed' feature class
-                    await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId);
+                    await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
                 }
 
                 // === Step 6: Move Files to Final Location ===
