@@ -59,7 +59,7 @@ namespace IC_Loader_Pro.Services
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
-            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), emailToProcess.Emailid, IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
             AttachmentAnalysisResult attachmentAnalysis = null;
 
@@ -230,16 +230,17 @@ namespace IC_Loader_Pro.Services
 
             // 4. Move the email to the 'Proccessed' folder.
             // The RefId on the test result is the email's MessageId.
-            string emailMessageId = testResult.RefId;            
+            string emailMessageId = testResult.RefId;
             var outlookService = new OutlookService();
-            string destinationPath = icSetting.OutlookProcessedFolderPath;
-            var (destStore, destFolder) = OutlookService.ParseOutlookPath(destinationPath);
+            string fullSourcePath = $"\\\\{sourceStoreName}\\{sourceFolderPath}";
+            string fullDestinationPath = icSetting.OutlookProcessedFolderPath;
+
+            // 2. Call the correct 4-argument version of the method.
             outlookService.MoveEmailToFolder(
                 outlookApp,
                 emailMessageId,
-                sourceFolderPath,
-                sourceStoreName,
-                destFolder
+                fullSourcePath,
+                fullDestinationPath
             );
         }
 
@@ -363,14 +364,23 @@ namespace IC_Loader_Pro.Services
 
             ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(message, "Automated Email Move", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
 
+            string fullSourcePath = $"\\\\{sourceStoreName}\\{sourceFolderPath}";
+
             // Move the email
             _outlookService.MoveEmailToFolder(
-                outlookApp,
-                emailId,
-                sourceFolderPath,
-                sourceStoreName,
-                destFolder
+            outlookApp,
+            emailId,
+            fullSourcePath,
+            fullDestPath
             );
+
+            //_outlookService.MoveEmailToFolder(
+            //    outlookApp,
+            //    emailId,
+            //    sourceFolderPath,
+            //    sourceStoreName,
+            //    destFolder
+            //);
         }
 
 

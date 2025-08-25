@@ -80,6 +80,7 @@
                           IsChecked="{Binding IsInTestMode}"
                           ToolTip="When checked, only emails from the test sender will be shown."/>
                     </MenuItem>
+                    <MenuItem Header="Test Geodatabase Connection..."  Command="{Binding OpenConnectionTesterCommand}"/>
 
                 </Menu>
             </StackPanel>

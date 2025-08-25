@@ -45,17 +45,17 @@ namespace IC_Loader_Pro.Helpers
 
         private static void OnViewModelCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            Log.RecordMessage($"DataGrid Behavior: ViewModel's collection changed (Action: {e.Action}).", BIS_Log.BisLogMessageType.Note);
+            //Log.RecordMessage($"DataGrid Behavior: ViewModel's collection changed (Action: {e.Action}).", BIS_Log.BisLogMessageType.Note);
 
             // ** THIS IS THE NEW DIAGNOSTIC LOGIC **
             if (_associations.TryGetValue(sender, out DataGrid dataGrid))
             {
-                Log.RecordMessage("--> Association FOUND for the collection. Proceeding to sync grid.", BIS_Log.BisLogMessageType.Note);
+            //    Log.RecordMessage("--> Association FOUND for the collection. Proceeding to sync grid.", BIS_Log.BisLogMessageType.Note);
                 SyncToDataGrid(dataGrid, sender as IList);
             }
             else
             {
-                Log.RecordMessage("--> Association NOT FOUND for the collection. Cannot sync grid.", BIS_Log.BisLogMessageType.Note);
+               // Log.RecordMessage("--> Association NOT FOUND for the collection. Cannot sync grid.", BIS_Log.BisLogMessageType.Note);
             }
         }
 

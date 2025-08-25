@@ -1,5 +1,6 @@
 ﻿using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using IC_Loader_Pro.Models;
@@ -9,10 +10,12 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Exception = System.Exception;
+
 
 namespace IC_Loader_Pro.Services
 {
@@ -73,46 +76,121 @@ namespace IC_Loader_Pro.Services
         /// <summary>
         /// Creates the initial record for a shape in the shape_info table.
         /// </summary>
-        public async Task RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
+        //public async Task<bool> RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
+        //{
+        //    const string methodName = "RecordShapeInfoAsync";
+
+        //    // 1. Get the rule for the shape info table from the rules engine.
+        //    var shapeInfoTableRule = _rules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
+        //    if (shapeInfoTableRule == null)
+        //    {
+        //        _log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+        //        return false;
+        //    }
+
+        //    // 2. All geodatabase edits must be run on the QueuedTask.
+        //    bool success = await QueuedTask.Run(async () =>
+        //    {
+        //        try
+        //        {
+        //            var gdbService = new GeodatabaseService();
+        //            // 3. Use our new service to open the table.
+        //            using (ArcGIS.Core.Data.Table shapeInfoTable = await gdbService.GetTableAsync(shapeInfoTableRule))
+        //            {
+        //                if (shapeInfoTable == null) return false;
+
+        //                // 4. Create and execute an EditOperation to create the new row.
+        //                var editOperation = new EditOperation
+        //                {
+        //                    Name = $"Create record for {newShapeId}",
+        //                    ShowProgressor = false,
+        //                    ShowModalMessageAfterFailure = false
+        //                };
+
+        //                // 5. Prepare the attributes for the new row.
+        //                var attributes = new Dictionary<string, object>
+        //        {
+        //            { "shape_id", newShapeId },
+        //            { "submission_id", submissionId },
+        //            { "deliverable_id", deliverableId },
+        //            { "pref_id", prefId },
+        //            { "ic_type", icType }
+        //        };
+
+        //                // 6. Queue the creation of the new row.
+        //                editOperation.Create(shapeInfoTable, attributes);
+        //                bool wasExecuted = editOperation.Execute();
+
+        //                // --- THIS IS THE NEW ERROR-LOGGING LOGIC ---
+        //                if (!wasExecuted)
+        //                {
+        //                    // If the operation fails, log the specific error message from the EditOperation.
+        //                    Log.RecordError($"EditOperation failed to create shape info record. Reason: {editOperation.ErrorMessage}", null, methodName);
+        //                }
+        //                return wasExecuted;
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            _log.RecordError($"Error creating new shape info record in '{shapeInfoTableRule.PostGreFeatureClassName}' for Shape ID '{newShapeId}'.", ex, methodName);
+        //            return false;
+        //        }
+        //    });
+
+        //    if (success)
+        //    {
+        //        Log.RecordMessage($"Successfully created record in shape_info table for Shape ID: {newShapeId}", BisLogMessageType.Note);
+        //    }
+        //    else
+        //    {
+        //        // The specific error will have already been logged inside the QueuedTask.
+        //    }
+        //    return success;
+        //}
+
+        // In IC_Loader_Pro/Services/ShapeProcessingService.cs
+
+        public async Task<bool> RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
         {
             const string methodName = "RecordShapeInfoAsync";
 
-            // 1. Get the name of the shape info table from the rules engine
             var shapeInfoTableRule = IcRules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
             if (shapeInfoTableRule == null || string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
             {
-                throw new InvalidOperationException($"The 'shape_info_table' is not configured for IC Type '{icType}'.");
+                Log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+                return false;
             }
             string tableName = shapeInfoTableRule.PostGreFeatureClassName;
 
-            // 2. Build the dynamic INSERT statement and parameter list
-            var columns = new Dictionary<string, object>
-    {
-        { "SHAPE_ID", newShapeId },
-        { "submission_id", submissionId },
-        { "deliverable_id", deliverableId },
-        { "pref_id", prefId },
-        { "ic_type", icType }
-    };
-
-            var fieldList = string.Join(", ", columns.Keys);
-            var valuePlaceholders = string.Join(", ", columns.Keys.Select(k => "?"));
-            var sql = $"INSERT INTO {tableName} ({fieldList}) VALUES ({valuePlaceholders})";
-
-            var parameters = columns.Values.ToList();
-
-            // 3. Execute the query
             try
             {
-                await Task.Run(() => PostGreTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
-                Log.RecordMessage($"Created record in {tableName} for Shape ID: {newShapeId}", BisLogMessageType.Note);
+                // --- THIS IS THE CORRECTED LINE ---
+                // Pass the service's own logger (_log) into the factory method.
+                var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
+                if (shapeInfoDbTool == null)
+                {
+                    Log.RecordError("Failed to create a database connection for the shape_info table.", null, methodName);
+                    return false;
+                }
+
+                var attributes = new Dictionary<string, object> { /*...*/ };
+                var fieldList = string.Join(", ", attributes.Keys);
+                var valuePlaceholders = string.Join(", ", attributes.Keys.Select(k => "?"));
+                var sql = $"INSERT INTO {tableName} ({fieldList}) VALUES ({valuePlaceholders})";
+                var parameters = attributes.Values.ToList();
+
+                await Task.Run(() => shapeInfoDbTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
+
+                Log.RecordMessage($"Successfully created record in {tableName} for Shape ID: {newShapeId}", BisLogMessageType.Note);
+                return true;
             }
             catch (Exception ex)
             {
                 Log.RecordError($"Error creating new shape info record in '{tableName}' for Shape ID '{newShapeId}'.", ex, methodName);
-                throw;
+                return false;
             }
         }
+
 
         /// <summary>
         /// Checks for duplicate polygons in the proposed feature class by comparing both
@@ -122,46 +200,28 @@ namespace IC_Loader_Pro.Services
         {
             bool isDuplicate = false;
 
-            // All GIS and database operations must run on the background thread.
+            var proposedFcRule = _rules.ReturnIcGisTypeSettings(icType)?.ProposedFeatureClass;
+            if (proposedFcRule == null)
+            {
+                _log.RecordError("Proposed feature class is not configured in the rules.", null, nameof(IsDuplicateInProposedAsync));
+                return false;
+            }
+
             await QueuedTask.Run(async () =>
             {
-                // 1. Get the rule for the 'proposed' feature class from the IC_Rules engine.
-                var proposedFcRule = _rules.ReturnIcGisTypeSettings(icType)?.ProposedFeatureClass;
-                if (proposedFcRule == null || string.IsNullOrEmpty(proposedFcRule.PostGreFeatureClassName))
+                try 
                 {
-                    _log.RecordError("Proposed feature class is not configured in the rules.", null, nameof(IsDuplicateInProposedAsync));
-                    return;
-                }
-
-                var workspaceRule = proposedFcRule.WorkSpaceRule;
-                Geodatabase geodatabase = null;
-                try
-                {
-                    // 2. Build the connection properties for the enterprise geodatabase.
-                    var dbConnectionProperties = new DatabaseConnectionProperties(EnterpriseDatabaseType.PostgreSQL)
+                    var gdbService = new GeodatabaseService();
+                    using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
                     {
-                        // Format for PostgreSQL instance is "sde:postgresql:<server>"
-                        Instance = $"sde:postgresql:{workspaceRule.Server}",
-                        Database = workspaceRule.Database,
-                        User = workspaceRule.User,
-                        Password = workspaceRule.Password,
-                        Version = workspaceRule.Version
-                    };
+                        if (proposedFc == null) return;
 
-                    // 3. Connect to the geodatabase.
-                    geodatabase = new Geodatabase(dbConnectionProperties);
-
-                    // 4. Open the target feature class. The 'using' statement ensures it's properly closed.
-                    using (var proposedFc = geodatabase.OpenDataset<FeatureClass>(proposedFcRule.PostGreFeatureClassName))
-                    {
-                        // 5. Create a spatial filter to efficiently find candidate features.
                         var spatialFilter = new SpatialQueryFilter
                         {
                             FilterGeometry = shape.Extent,
                             SpatialRelationship = SpatialRelationship.Intersects
                         };
 
-                        // 6. Search the feature class for potential duplicates.
                         using (var cursor = proposedFc.Search(spatialFilter, false))
                         {
                             while (cursor.MoveNext())
@@ -169,24 +229,24 @@ namespace IC_Loader_Pro.Services
                                 using (var currentFeature = cursor.Current as Feature)
                                 {
                                     if (currentFeature == null) continue;
-
-                                    // 7. Use GeometryEngine to check for equality with tolerance.
+                                    var existingShape = currentFeature.GetShape();
+                                    if (existingShape == null) continue;
+                                    var shapeToCompare = GeometryEngine.Instance.Project(shape, existingShape.SpatialReference);
                                     if (GeometryEngine.Instance.Equals(shape, currentFeature.GetShape()))
                                     {
-                                        // 8. If geometries match, check the business rules via the shape_info table.
                                         string existingShapeId = currentFeature["SHAPE_ID"]?.ToString();
                                         if (string.IsNullOrEmpty(existingShapeId)) continue;
 
-                                        var existingShapeInfo = await GetShapeInfoAsync(existingShapeId);
+                                        var existingShapeInfo = await GetShapeInfoAsync(existingShapeId, icType);
 
                                         if (existingShapeInfo.HasValue &&
                                             existingShapeInfo.Value.PrefId.Equals(currentPrefId, StringComparison.OrdinalIgnoreCase) &&
                                             existingShapeInfo.Value.IcType.Equals(icType, StringComparison.OrdinalIgnoreCase) &&
                                             (existingShapeInfo.Value.Status == "To Be Reviewed" || existingShapeInfo.Value.Status == "Shape Approved"))
                                         {
-                                            _log.RecordMessage($"Found a valid duplicate. New shape is a duplicate of existing shape ID: {existingShapeId}", BisLogMessageType.Note);
+                                            _log.RecordMessage($"Found a valid duplicate of existing shape ID: {existingShapeId}", BisLogMessageType.Note);
                                             isDuplicate = true;
-                                            return; // Exit as soon as the first valid duplicate is found
+                                            return;
                                         }
                                     }
                                 }
@@ -196,13 +256,9 @@ namespace IC_Loader_Pro.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.RecordError($"Failed to connect to or query the proposed feature class '{proposedFcRule.PostGreFeatureClassName}'.", ex, nameof(IsDuplicateInProposedAsync));
-                    return;
-                }
-                finally
-                {
-                    // Ensure the geodatabase connection is always closed and disposed of.
-                    geodatabase?.Dispose();
+                    _log.RecordError($"A critical error occurred while checking for duplicate shapes in {proposedFcRule.PostGreFeatureClassName}.", ex, nameof(IsDuplicateInProposedAsync));
+                    // In case of an error, we assume it's not a duplicate to be safe.
+                    isDuplicate = false;
                 }
             });
 
@@ -211,7 +267,7 @@ namespace IC_Loader_Pro.Services
 
 
         /// <summary>
-        /// Updates a single field for a given shape's record in the shape_info table.
+        /// Updates a single field for a given shape's record in the shape_info table using the Geodatabase API.
         /// </summary>
         /// <param name="shapeId">The SHAPE_ID of the record to update.</param>
         /// <param name="fieldName">The name of the column to update.</param>
@@ -229,31 +285,77 @@ namespace IC_Loader_Pro.Services
 
             if (!allowedColumns.Contains(fieldName))
             {
-                throw new ArgumentException($"The field '{fieldName}' is not allowed for dynamic updates.");
+                _log.RecordError($"The field '{fieldName}' is not allowed for dynamic updates.", new ArgumentException(fieldName), methodName);
+                return;
             }
 
-            // 2. Get the name of the shape info table from the rules engine.
+            // 2. Get the rule for the shape info table from the rules engine.
             var shapeInfoTableRule = _rules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
-            if (shapeInfoTableRule == null || string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
+            if (shapeInfoTableRule == null)
             {
-                throw new InvalidOperationException($"The 'shape_info_table' is not configured for IC Type '{icType}'.");
+                _log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+                return;
             }
-            string tableName = shapeInfoTableRule.PostGreFeatureClassName;
 
-            // 3. Build the SQL and parameter list.
-            string sql = $"UPDATE {tableName} SET {fieldName} = ? WHERE SHAPE_ID = ?";
-            var parameters = new List<object> { value, shapeId };
+            // 3. All geodatabase edits must be run on the QueuedTask.
+            bool success = await QueuedTask.Run(() =>
+            {
+                try
+                {
+                    var gdbService = new GeodatabaseService();
+                    // 4. Use our new service to open the table.
+                    using (ArcGIS.Core.Data.Table shapeInfoTable = gdbService.GetTableAsync(shapeInfoTableRule).Result)
+                    {
+                        if (shapeInfoTable == null) return false;
 
-            try
+                        // 5. Find the specific row to update.
+                        var queryFilter = new QueryFilter { WhereClause = $"SHAPE_ID = '{shapeId}'" };
+                        using (var cursor = shapeInfoTable.Search(queryFilter, false))
+                        {
+                            if (cursor.MoveNext())
+                            {
+                                using (var rowToUpdate = cursor.Current)
+                                {
+                                    // 6. Create and execute an EditOperation to perform the update.
+                                    var editOperation = new EditOperation
+                                    {
+                                        Name = $"Update {fieldName} for {shapeId}",
+                                        ShowProgressor = false,
+                                        ShowModalMessageAfterFailure = false
+                                    };
+
+                                    editOperation.Modify(rowToUpdate, fieldName, value);
+
+                                    bool wasExecuted = editOperation.Execute();
+                                    if (!wasExecuted)
+                                    {
+                                        _log.RecordError($"Edit operation failed: {editOperation.ErrorMessage}", null, methodName);
+                                    }
+                                    return wasExecuted;
+                                }
+                            }
+                            else
+                            {
+                                _log.RecordError($"Could not find record in shape_info table for SHAPE_ID: {shapeId}", null, methodName);
+                                return false;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.RecordError($"Error updating field '{fieldName}' for Shape ID '{shapeId}'.", ex, methodName);
+                    return false;
+                }
+            });
+
+            if (!success)
             {
-                await Task.Run(() => PostGreTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
-            }
-            catch (Exception ex)
-            {
-                Log.RecordError($"Error updating field '{fieldName}' for Shape ID '{shapeId}'.", ex, methodName);
-                throw;
+                // The specific error will have already been logged.
+                // We could throw an exception here if this failure should stop the entire save process.
             }
         }
+
 
         /// <summary>
         /// Copies an approved shape's geometry and key attributes into the 'proposed' feature class.
@@ -265,65 +367,53 @@ namespace IC_Loader_Pro.Services
         {
             const string methodName = "CopyShapeToProposedAsync";
 
-            // All geodatabase edits must run on the background QueuedTask.
-            bool success = await QueuedTask.Run(() =>
+            var proposedFcRule = IcRules.ReturnIcGisTypeSettings(icType)?.ProposedFeatureClass;
+            if (proposedFcRule == null)
             {
-                // 1. Get the rule for the 'proposed' feature class from the IC_Rules engine.
-                var proposedFcRule = _rules.ReturnIcGisTypeSettings(icType)?.ProposedFeatureClass;
-                if (proposedFcRule == null || string.IsNullOrEmpty(proposedFcRule.PostGreFeatureClassName))
-                {
-                    _log.RecordError("Proposed feature class is not configured in the rules.", null, methodName);
-                    return false;
-                }
+                Log.RecordError("Proposed feature class is not configured in the rules.", null, methodName);
+                return;
+            }
 
-                var workspaceRule = proposedFcRule.WorkSpaceRule;
-                Geodatabase geodatabase = null;
+            bool success = await QueuedTask.Run(async () =>
+            {
+                var editOperation = new EditOperation
+                {
+                    Name = $"Copy Proposed Shape {newShapeId}",
+                    ShowProgressor = false,
+                    ShowModalMessageAfterFailure = false
+                };
+
                 try
                 {
-                    // 2. Build the connection properties and connect to the geodatabase.
-                    var dbConnectionProperties = new DatabaseConnectionProperties(EnterpriseDatabaseType.PostgreSQL)
+                    var gdbService = new GeodatabaseService();
+                    using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
                     {
-                        Instance = $"sde:postgresql:{workspaceRule.Server}",
-                        Database = workspaceRule.Database,
-                        User = workspaceRule.User,
-                        Password = workspaceRule.Password,
-                        Version = workspaceRule.Version
-                    };
-                    geodatabase = new Geodatabase(dbConnectionProperties);
+                        if (proposedFc == null) return false;
 
-                    // 3. Open the target feature class.
-                    using (var proposedFc = geodatabase.OpenDataset<FeatureClass>(proposedFcRule.PostGreFeatureClassName))
-                    {
-                        // 4. Create an EditOperation to manage the edit.
-                        var editOperation = new EditOperation
-                        {
-                            Name = $"Copy Proposed Shape {newShapeId}",
-                            ShowProgressor = false,
-                            ShowModalMessageAfterFailure = false
-                        };
-
-                        // 5. Prepare the attributes for the new feature.
                         var attributes = new Dictionary<string, object>
                 {
                     { "SHAPE_ID", newShapeId },
-                    { proposedFc.GetDefinition().GetShapeField(), shape } // Add the geometry
+                    { proposedFc.GetDefinition().GetShapeField(), shape }
                 };
 
-                        // 6. Queue the creation of the new feature.
                         editOperation.Create(proposedFc, attributes);
 
-                        // 7. Execute the operation to commit the new feature to the geodatabase.
-                        return editOperation.Execute();
+                        bool wasExecuted = editOperation.Execute();
+
+                        if (!wasExecuted)
+                        {
+                            // This is the core error logging that will give us the reason for the failure.
+                            Log.RecordError($"EditOperation failed to copy shape '{newShapeId}'. Reason: {editOperation.ErrorMessage}", null, methodName);
+                        }
+                        return wasExecuted;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _log.RecordError($"Failed to copy shape to the proposed feature class '{proposedFcRule.PostGreFeatureClassName}'.", ex, methodName);
+                    Log.RecordError($"An exception occurred while trying to copy shape '{newShapeId}'.", ex, methodName);
+                    // It's always safe to call Abort in a catch block to ensure the operation is cancelled.
+                    editOperation.Abort();
                     return false;
-                }
-                finally
-                {
-                    geodatabase?.Dispose();
                 }
             });
 
@@ -331,48 +421,70 @@ namespace IC_Loader_Pro.Services
             {
                 Log.RecordMessage($"Shape {newShapeId} successfully copied to proposed feature class.", BisLogMessageType.Note);
             }
-            else
+            //StatusMessage = "Saving features to geodatabase...";
+            bool editsSaved = await Project.Current.SaveEditsAsync();
+            if (!editsSaved)
             {
-                Log.RecordError($"Failed to execute EditOperation for shape {newShapeId}.", null, methodName);
+                Log.RecordError("Failed to save edits to the geodatabase.", null, methodName);
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    "Failed to save new features to the geodatabase. The submission will not be finalized.",
+                    "Save Error");
+               // IsEmailActionEnabled = true; // Re-enable buttons
+                return;
             }
         }
 
         /// <summary>
-        /// Retrieves key business attributes for a single shape from the shape_info table.
+        /// Retrieves key business attributes for a single shape from the shape_info table using the Geodatabase API.
         /// </summary>
-        /// <param name="shapeId">The SHAPE_ID to look up.</param>
-        /// <returns>A nullable tuple containing the PrefId, IcType, and Status, or null if not found.</returns>
-        private async Task<(string PrefId, string IcType, string Status)?> GetShapeInfoAsync(string shapeId)
+        private async Task<(string PrefId, string IcType, string Status)?> GetShapeInfoAsync(string shapeId, string icType)
         {
             const string methodName = "GetShapeInfoAsync";
             (string PrefId, string IcType, string Status)? result = null;
 
-            try
+            // 1. Get the rule for the shape_info table.
+            var shapeInfoTableRule = _rules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
+            if (shapeInfoTableRule == null)
             {
-                var paramDict = new Dictionary<string, object> { { "SHAPE_ID", shapeId } };
-
-                // Run the database query on a background thread
-                var dt = await Task.Run(() =>
-                    PostGreTool.ExecuteNamedQuery("returnShapeInfo", paramDict) as DataTable
-                );
-
-                if (dt != null && dt.Rows.Count > 0)
-                {
-                    DataRow row = dt.Rows[0];
-                    // Safely extract the values from the DataRow
-                    string prefId = row["PREF_ID"]?.ToString() ?? "Unknown";
-                    string icType = row["IC_TYPE"]?.ToString() ?? "";
-                    string status = row["SHAPE_STATUS"]?.ToString() ?? "";
-
-                    result = (prefId, icType, status);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError($"Error retrieving shape info for Shape ID '{shapeId}'.", ex, methodName);
-                // Return null in case of an error
+                _log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
                 return null;
             }
+
+            // This operation must run on the background thread.
+            await QueuedTask.Run(async () =>
+            {
+                try
+                {
+                    // 2. Use our service to open the table.
+                    var gdbService = new GeodatabaseService();
+                    using (var shapeInfoTable = await gdbService.GetTableAsync(shapeInfoTableRule))
+                    {
+                        if (shapeInfoTable == null) return;
+
+                        // 3. Find the specific row using a QueryFilter.
+                        var queryFilter = new QueryFilter { WhereClause = $"SHAPE_ID = '{shapeId}'" };
+                        using (var cursor = shapeInfoTable.Search(queryFilter, false))
+                        {
+                            if (cursor.MoveNext())
+                            {
+                                using (var row = cursor.Current)
+                                {
+                                    // 4. Extract the values and build the result tuple.
+                                    string prefId = row["PREF_ID"]?.ToString() ?? "Unknown";
+                                    string foundIcType = row["IC_TYPE"]?.ToString() ?? "";
+                                    string status = row["SHAPE_STATUS"]?.ToString() ?? "";
+                                    result = (prefId, foundIcType, status);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.RecordError($"Error retrieving shape info for Shape ID '{shapeId}'.", ex, methodName);
+                    result = null;
+                }
+            });
 
             return result;
         }

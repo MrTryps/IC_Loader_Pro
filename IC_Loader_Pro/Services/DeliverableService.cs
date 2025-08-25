@@ -215,7 +215,7 @@ namespace IC_Loader_Pro.Services
                     // Check if the value is too long
                     if (value.Length > maxLength)
                     {
-                        Log.RecordMessage($"Data for column '{columnName}' is too long ({value.Length} chars). Truncating to {maxLength} chars.", BisLogMessageType.Warning);
+                        Log.RecordMessage($"Recording email body data. Data for column '{columnName}' is too long ({value.Length} chars). Truncating to {maxLength} chars.", BisLogMessageType.Warning);
                         // Truncate the value before adding it
                         value = value.Substring(0, maxLength);
                     }

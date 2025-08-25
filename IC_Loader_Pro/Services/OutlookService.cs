@@ -142,23 +142,66 @@ namespace IC_Loader_Pro.Services
         /// <summary>
         /// Navigates to and retrieves a folder object based on the store and folder path.
         /// </summary>
+        //private Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        //{
+        //    Outlook.Store targetStore = null;
+        //    Outlook.MAPIFolder currentFolder = null;
+
+        //    try
+        //    {
+        //        targetStore = mapiNamespace.Stores
+        //            .Cast<Outlook.Store>()
+        //            .FirstOrDefault(s =>
+        //        s != null && // First, check if the store object itself is not null
+        //        s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
+        //        if (targetStore == null) return null;
+
+        //        currentFolder = targetStore.GetRootFolder();
+        //        var folderNames = folderPath.Split('\\');
+
+        //        foreach (var name in folderNames)
+        //        {
+        //            Outlook.MAPIFolder nextFolder = null;
+        //            try
+        //            {
+        //                nextFolder = currentFolder.Folders[name];
+        //                Marshal.ReleaseComObject(currentFolder); // Release previous folder
+        //                currentFolder = nextFolder;
+        //            }
+        //            catch
+        //            {
+        //                // Folder not found, clean up and return null
+        //                if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
+        //                Marshal.ReleaseComObject(currentFolder);
+        //                return null;
+        //            }
+        //        }
+        //        return currentFolder;
+        //    }
+        //    finally
+        //    {
+        //        if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+        //    }
+        //}
+
         private Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
         {
+            const string methodName = "GetFolderFromPath";
             Outlook.Store targetStore = null;
             Outlook.MAPIFolder currentFolder = null;
-
             try
             {
-                targetStore = mapiNamespace.Stores
-                    .Cast<Outlook.Store>()
-                    .FirstOrDefault(s =>
-                s != null && // First, check if the store object itself is not null
-                s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
-
-                if (targetStore == null) return null;
+                targetStore = mapiNamespace.Stores.Cast<Outlook.Store>().FirstOrDefault(s => s != null && s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+                if (targetStore == null)
+                {
+                    Log.RecordError($"Could not find store '{storeName}'.", null, methodName);
+                    return null;
+                }
 
                 currentFolder = targetStore.GetRootFolder();
-                var folderNames = folderPath.Split('\\');
+                // This split now correctly removes empty entries that occur from leading backslashes.
+                var folderNames = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
 
                 foreach (var name in folderNames)
                 {
@@ -166,12 +209,12 @@ namespace IC_Loader_Pro.Services
                     try
                     {
                         nextFolder = currentFolder.Folders[name];
-                        Marshal.ReleaseComObject(currentFolder); // Release previous folder
+                        Marshal.ReleaseComObject(currentFolder);
                         currentFolder = nextFolder;
                     }
                     catch
                     {
-                        // Folder not found, clean up and return null
+                        Log.RecordError($"FAILED to find subfolder '{name}' in '{currentFolder.FolderPath}'.", null, methodName);
                         if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
                         Marshal.ReleaseComObject(currentFolder);
                         return null;
@@ -184,6 +227,7 @@ namespace IC_Loader_Pro.Services
                 if (targetStore != null) Marshal.ReleaseComObject(targetStore);
             }
         }
+
 
         /// <summary>
         /// Retrieves a specific email from Outlook and maps it to a custom EmailItem object.
@@ -299,16 +343,14 @@ namespace IC_Loader_Pro.Services
 
 
         /// <summary>
-        /// Finds an email by its ID in a source folder and moves it to a destination folder.
+        /// Finds an email by its ID and moves it to a destination folder.
         /// </summary>
-        /// <param name="messageId">The Internet Message ID of the email to move.</param>
-        /// <param name="sourceFolderPath">The path of the folder where the email currently resides.</param>
-        /// <param name="storeName">The name of the store (mailbox) for both source and destination.</param>
-        /// <param name="destinationFolderPath">The path of the folder to move the email to.</param>
-        /// <returns>True if the move was successful, otherwise false.</returns>
-        public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string sourceFolderPath, string storeName, string destinationFolderPath)
+        /// <param name="fullSourceFolderPath">The full path of the folder where the email currently resides (e.g., \\Store\Inbox).</param>
+        /// <param name="fullDestinationFolderPath">The full path of the folder to move the email to.</param>
+        public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string fullSourceFolderPath, string fullDestinationFolderPath)
         {
-            Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{destinationFolderPath}'.", BisLogMessageType.Note);
+            Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{fullDestinationFolderPath}'.", BisLogMessageType.Note);
+            if (string.IsNullOrEmpty(messageId)) return false;
 
             Outlook.NameSpace mapiNamespace = null;
             Outlook.MAPIFolder sourceFolder = null;
@@ -316,34 +358,24 @@ namespace IC_Loader_Pro.Services
             object itemToMove = null;
             bool success = false;
 
-            if (string.IsNullOrEmpty(messageId) || string.IsNullOrEmpty(sourceFolderPath) || string.IsNullOrEmpty(destinationFolderPath))
-            {
-                Log.RecordError("MoveEmailToFolder failed: One or more required parameters were null or empty.", null, nameof(MoveEmailToFolder));
-                return false;
-            }
-
             try
             {
                 mapiNamespace = outlookApp.GetNamespace("MAPI");
-                string actualStoreName = string.IsNullOrEmpty(storeName) ? mapiNamespace.DefaultStore.DisplayName : storeName;
 
-                // Find both the source and destination folders
-                sourceFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, sourceFolderPath);
-                destinationFolder = this.GetFolderFromPath(mapiNamespace, actualStoreName, destinationFolderPath);
+                var (sourceStore, sourcePath) = ParseOutlookPath(fullSourceFolderPath);
+                var (destStore, destPath) = ParseOutlookPath(fullDestinationFolderPath);
 
-                if (sourceFolder == null)
+                if (!sourceStore.Equals(destStore, StringComparison.OrdinalIgnoreCase))
                 {
-                    Log.RecordError($"Move failed: Could not find source folder '{sourceFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
+                    Log.RecordError("Move failed: Source and destination stores must be the same.", null, nameof(MoveEmailToFolder));
                     return false;
                 }
 
-                if (destinationFolder == null)
-                {
-                    Log.RecordError($"Move failed: Could not find destination folder '{destinationFolderPath}' in store '{actualStoreName}'.", null, nameof(MoveEmailToFolder));
-                    return false;
-                }
+                sourceFolder = GetFolderFromPath(mapiNamespace, sourceStore, sourcePath);
+                destinationFolder = GetFolderFromPath(mapiNamespace, destStore, destPath);
 
-                // Find the specific email item using the same DASL query logic
+                if (sourceFolder == null || destinationFolder == null) return false; // Errors are logged in GetFolderFromPath
+
                 string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
                 itemToMove = sourceFolder.Items.Find(filter);
 
@@ -365,15 +397,13 @@ namespace IC_Loader_Pro.Services
             }
             finally
             {
-                // Release all COM objects
                 if (itemToMove != null) Marshal.ReleaseComObject(itemToMove);
                 if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
                 if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
                 if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
             }
-
             return success;
-        }               
+        }
 
         private void SaveAttachmentsToTempFolder(EmailItem emailItem, Outlook.Attachments attachments)
         {

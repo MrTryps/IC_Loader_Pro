@@ -250,6 +250,7 @@ namespace IC_Loader_Pro
             ReloadFileSetCommand = new RelayCommand(async (param) => await OnReloadFileSetAsync(param as FileSetViewModel),(param) => param is FileSetViewModel fs && fs.IsLoadedInMap);
             AddSubmissionCommand = new RelayCommand(async () => await OnAddSubmissionAsync(), () => IsUIEnabled);
             CreateNewIcDeliverableCommand = new RelayCommand(async () => await OnCreateNewIcDeliverableAsync(), () => IsUIEnabled);
+            OpenConnectionTesterCommand = new RelayCommand(OnOpenConnectionTester, () => IsUIEnabled);
         }
         #endregion
      
@@ -279,7 +280,8 @@ namespace IC_Loader_Pro
                 if (value != null)
                 {
                     _currentIcSetting = IcRules.ReturnIcGisTypeSettings(value.Name);
-                // The underscore discards the returned Task, which is a standard
+                    // The underscore discards the returned Task, which is a standard
+                    _ = AddProposedFcToMapAsync();
                     _ = ProcessSelectedQueueAsync();
                 }
                 else
@@ -1364,6 +1366,45 @@ namespace IC_Loader_Pro
             }
         }
 
+        private void OnOpenConnectionTester()
+        {
+            var testerWindow = new Views.ConnectionTesterWindow
+            {
+                DataContext = new ConnectionTesterViewModel(),
+                Owner = FrameworkApplication.Current.MainWindow
+            };
+            testerWindow.ShowDialog();
+        }
+
+        private async Task AddProposedFcToMapAsync()
+        {
+            if (_currentIcSetting == null || MapView.Active == null) return;
+
+            // Get the rule for the 'proposed' feature class
+            var proposedFcRule = _currentIcSetting.ProposedFeatureClass;
+            if (proposedFcRule == null) return;
+
+            await QueuedTask.Run(async () =>
+            {
+                var activeMap = MapView.Active.Map;
+                // Check if a layer with this datasource already exists
+                if (activeMap.GetLayersAsFlattenedList()
+                    .Any(l => l is FeatureLayer fl && fl.GetFeatureClass().GetName() == proposedFcRule.PostGreFeatureClassName))
+                {
+                    return; // Layer is already on the map
+                }
+
+                var gdbService = new Services.GeodatabaseService();
+                using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
+                {
+                    if (proposedFc != null)
+                    {
+                        var layerParams = new FeatureLayerCreationParams(proposedFc);
+                        LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                    }
+                }
+            });
+        }
 
         #endregion
     }
