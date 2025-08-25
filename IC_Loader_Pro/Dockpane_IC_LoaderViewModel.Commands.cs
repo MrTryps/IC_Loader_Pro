@@ -235,6 +235,8 @@ namespace IC_Loader_Pro
             try
             {
                 // === Step 1 & 2: Create Deliverable and Save Metadata ===
+                var goodCounts = new Dictionary<string, int>();
+                var dupCounts = new Dictionary<string, int>();
                 StatusMessage = "Creating deliverable record...";
                 newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
                     "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
@@ -254,14 +256,48 @@ namespace IC_Loader_Pro
                 await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
 
                 // === Step 4: Copy Approved Shapes to the 'Proposed' Feature Class ===
-                int shapeCounter = 0; // Counter for the sequential letter
+
                 foreach (var shapeToSave in _selectedShapes)
                 {
-                    StatusMessage = $"Copying shape {shapeToSave.ShapeReferenceId}...";
+                    StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
+                    string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
+                    if (string.IsNullOrEmpty(submissionId))
+                    {
+                        Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+                        continue;
+                    }
 
-                    char shapeSuffix = (char)('A' + shapeCounter);
-                    string newShapeId = $"{newDelId}_{SelectedIcType.Name}_{shapeSuffix}";
-                    shapeCounter++;
+                    // --- THIS IS THE CORRECT LOGIC ---
+                    // Get the next unique Shape ID from the database service.
+                    string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
+                    // --- END OF CORRECTION ---
+
+                    bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
+                    if (!recordCreated)
+                    {
+                        Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
+                        continue; // Skip to the next shape if the info record fails
+                    }
+
+                    bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
+
+                    if (isDuplicate)
+                    {
+                        if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
+                        dupCounts[submissionId]++;
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
+                    }
+                    else
+                    {
+                        if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
+                        goodCounts[submissionId]++;
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
+                    }
+
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
+                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
 
                     await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
                 }

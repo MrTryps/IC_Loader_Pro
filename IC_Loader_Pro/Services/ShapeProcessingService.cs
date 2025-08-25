@@ -150,6 +150,118 @@ namespace IC_Loader_Pro.Services
 
         // In IC_Loader_Pro/Services/ShapeProcessingService.cs
 
+        //public async Task<bool> RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
+        //{
+        //    const string methodName = "RecordShapeInfoAsync";
+
+        //    var shapeInfoTableRule = IcRules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
+        //    if (shapeInfoTableRule == null || string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
+        //    {
+        //        Log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+        //        return false;
+        //    }
+        //    string tableName = shapeInfoTableRule.PostGreFeatureClassName;
+
+        //    try
+        //    {
+        //        // --- THIS IS THE CORRECTED LINE ---
+        //        // Pass the service's own logger (_log) into the factory method.
+        //        var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
+        //        if (shapeInfoDbTool == null)
+        //        {
+        //            Log.RecordError("Failed to create a database connection for the shape_info table.", null, methodName);
+        //            return false;
+        //        }
+
+        //        var attributes = new Dictionary<string, object> { /*...*/ };
+        //        var fieldList = string.Join(", ", attributes.Keys);
+        //        var valuePlaceholders = string.Join(", ", attributes.Keys.Select(k => "?"));
+        //        var sql = $"INSERT INTO {tableName} ({fieldList}) VALUES ({valuePlaceholders})";
+        //        var parameters = attributes.Values.ToList();
+
+        //        await Task.Run(() => shapeInfoDbTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
+
+        //        Log.RecordMessage($"Successfully created record in {tableName} for Shape ID: {newShapeId}", BisLogMessageType.Note);
+        //        return true;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError($"Error creating new shape info record in '{tableName}' for Shape ID '{newShapeId}'.", ex, methodName);
+        //        return false;
+        //    }
+        //}
+
+        //public async Task<bool> RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
+        //{
+        //    const string methodName = "RecordShapeInfoAsync";
+
+        //    var shapeInfoTableRule = IcRules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
+        //    if (shapeInfoTableRule == null || string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
+        //    {
+        //        Log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+        //        return false;
+        //    }
+
+        //    bool success = await QueuedTask.Run(async () =>
+        //    {
+        //        try
+        //        {
+        //            var gdbService = new GeodatabaseService();
+        //            using (ArcGIS.Core.Data.Table shapeInfoTable = await gdbService.GetTableAsync(shapeInfoTableRule))
+        //            {
+        //                if (shapeInfoTable == null) return false;
+
+        //                var editOperation = new EditOperation
+        //                {
+        //                    Name = $"Create record for {newShapeId}",
+        //                    ShowProgressor = false,
+        //                    ShowModalMessageAfterFailure = false
+        //                };
+
+        //                // The insert logic is queued as a Callback action within the EditOperation.
+        //                // This is the most robust pattern.
+        //                editOperation.Callback(context =>
+        //                {
+        //                    // Create a RowBuffer to hold the new row's attributes.
+        //                    using (var rowBuffer = shapeInfoTable.CreateRowBuffer())
+        //                    {
+        //                        rowBuffer["SHAPE_ID"] = newShapeId;
+        //                        rowBuffer["submission_id"] = submissionId;
+        //                        rowBuffer["deliverable_id"] = deliverableId;
+        //                        rowBuffer["pref_id"] = prefId;
+        //                        rowBuffer["ic_type"] = icType;
+
+        //                        // Create the new row using an InsertCursor.
+        //                        using (var cursor = shapeInfoTable.CreateInsertCursor())
+        //                        {
+        //                            cursor.Insert(rowBuffer);
+        //                        }
+        //                    }
+        //                }, shapeInfoTable);
+
+        //                bool wasExecuted = editOperation.Execute();
+        //                if (!wasExecuted)
+        //                {
+        //                    Log.RecordError($"EditOperation failed to create shape info record. Reason: {editOperation.ErrorMessage}", null, methodName);
+        //                }
+        //                return wasExecuted;
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            Log.RecordError($"Error creating new shape info record for Shape ID '{newShapeId}'.", ex, methodName);
+        //            return false;
+        //        }
+        //    });
+
+        //    if (success)
+        //    {
+        //        Log.RecordMessage($"Successfully created record in shape_info table for Shape ID: {newShapeId}", BisLogMessageType.Note);
+        //    }
+
+        //    return success;
+        //}
+
         public async Task<bool> RecordShapeInfoAsync(string newShapeId, string submissionId, string deliverableId, string prefId, string icType)
         {
             const string methodName = "RecordShapeInfoAsync";
@@ -164,8 +276,7 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                // --- THIS IS THE CORRECTED LINE ---
-                // Pass the service's own logger (_log) into the factory method.
+                // 1. Create a dedicated database tool that connects to the correct cluster for the shape_info table.
                 var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
                 if (shapeInfoDbTool == null)
                 {
@@ -173,12 +284,22 @@ namespace IC_Loader_Pro.Services
                     return false;
                 }
 
-                var attributes = new Dictionary<string, object> { /*...*/ };
+                // 2. Build the dynamic INSERT statement and parameter list.
+                var attributes = new Dictionary<string, object>
+        {
+            { "SHAPE_ID", newShapeId },
+            { "submission_id", submissionId },
+            { "deliverable_id", deliverableId },
+            { "pref_id", prefId },
+            { "ic_type", icType }
+        };
+
                 var fieldList = string.Join(", ", attributes.Keys);
                 var valuePlaceholders = string.Join(", ", attributes.Keys.Select(k => "?"));
                 var sql = $"INSERT INTO {tableName} ({fieldList}) VALUES ({valuePlaceholders})";
                 var parameters = attributes.Values.ToList();
 
+                // 3. Execute the query using the PostGreTool.
                 await Task.Run(() => shapeInfoDbTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
 
                 Log.RecordMessage($"Successfully created record in {tableName} for Shape ID: {newShapeId}", BisLogMessageType.Note);
@@ -190,6 +311,7 @@ namespace IC_Loader_Pro.Services
                 return false;
             }
         }
+
 
 
         /// <summary>
@@ -266,13 +388,6 @@ namespace IC_Loader_Pro.Services
         }
 
 
-        /// <summary>
-        /// Updates a single field for a given shape's record in the shape_info table using the Geodatabase API.
-        /// </summary>
-        /// <param name="shapeId">The SHAPE_ID of the record to update.</param>
-        /// <param name="fieldName">The name of the column to update.</param>
-        /// <param name="value">The new value for the field.</param>
-        /// <param name="icType">The current IC Type, used to find the correct table name from the rules.</param>
         public async Task UpdateShapeInfoFieldAsync(string shapeId, string fieldName, object value, string icType)
         {
             const string methodName = "UpdateShapeInfoFieldAsync";
@@ -285,74 +400,41 @@ namespace IC_Loader_Pro.Services
 
             if (!allowedColumns.Contains(fieldName))
             {
-                _log.RecordError($"The field '{fieldName}' is not allowed for dynamic updates.", new ArgumentException(fieldName), methodName);
+                Log.RecordError($"The field '{fieldName}' is not allowed for dynamic updates.", new ArgumentException(fieldName), methodName);
                 return;
             }
 
             // 2. Get the rule for the shape info table from the rules engine.
-            var shapeInfoTableRule = _rules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
-            if (shapeInfoTableRule == null)
+            var shapeInfoTableRule = IcRules.ReturnIcGisTypeSettings(icType)?.ShapeInfoTable;
+            if (shapeInfoTableRule == null || string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
             {
-                _log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
+                Log.RecordError($"The 'shape_info_table' is not configured for IC Type '{icType}'.", null, methodName);
                 return;
             }
+            string tableName = shapeInfoTableRule.PostGreFeatureClassName;
 
-            // 3. All geodatabase edits must be run on the QueuedTask.
-            bool success = await QueuedTask.Run(() =>
+            try
             {
-                try
+                // 3. Create a dedicated database tool that connects to the correct cluster.
+                var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
+                if (shapeInfoDbTool == null)
                 {
-                    var gdbService = new GeodatabaseService();
-                    // 4. Use our new service to open the table.
-                    using (ArcGIS.Core.Data.Table shapeInfoTable = gdbService.GetTableAsync(shapeInfoTableRule).Result)
-                    {
-                        if (shapeInfoTable == null) return false;
-
-                        // 5. Find the specific row to update.
-                        var queryFilter = new QueryFilter { WhereClause = $"SHAPE_ID = '{shapeId}'" };
-                        using (var cursor = shapeInfoTable.Search(queryFilter, false))
-                        {
-                            if (cursor.MoveNext())
-                            {
-                                using (var rowToUpdate = cursor.Current)
-                                {
-                                    // 6. Create and execute an EditOperation to perform the update.
-                                    var editOperation = new EditOperation
-                                    {
-                                        Name = $"Update {fieldName} for {shapeId}",
-                                        ShowProgressor = false,
-                                        ShowModalMessageAfterFailure = false
-                                    };
-
-                                    editOperation.Modify(rowToUpdate, fieldName, value);
-
-                                    bool wasExecuted = editOperation.Execute();
-                                    if (!wasExecuted)
-                                    {
-                                        _log.RecordError($"Edit operation failed: {editOperation.ErrorMessage}", null, methodName);
-                                    }
-                                    return wasExecuted;
-                                }
-                            }
-                            else
-                            {
-                                _log.RecordError($"Could not find record in shape_info table for SHAPE_ID: {shapeId}", null, methodName);
-                                return false;
-                            }
-                        }
-                    }
+                    Log.RecordError("Failed to create a database connection for the shape_info table.", null, methodName);
+                    return;
                 }
-                catch (Exception ex)
-                {
-                    _log.RecordError($"Error updating field '{fieldName}' for Shape ID '{shapeId}'.", ex, methodName);
-                    return false;
-                }
-            });
 
-            if (!success)
+                // 4. Build the SQL UPDATE statement and parameter list.
+                string sql = $"UPDATE {tableName} SET {fieldName} = ? WHERE SHAPE_ID = ?";
+                var parameters = new List<object> { value, shapeId };
+
+                // 5. Execute the query using the PostGreTool.
+                await Task.Run(() => shapeInfoDbTool.ExecuteRawQuery(sql, parameters, "NOTHING"));
+            }
+            catch (Exception ex)
             {
-                // The specific error will have already been logged.
-                // We could throw an exception here if this failure should stop the entire save process.
+                Log.RecordError($"Error updating field '{fieldName}' for Shape ID '{shapeId}'.", ex, methodName);
+                // Decide if you want to re-throw the exception to stop the save process
+                // throw; 
             }
         }
 

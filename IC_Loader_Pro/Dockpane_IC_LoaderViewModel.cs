@@ -281,7 +281,7 @@ namespace IC_Loader_Pro
                 {
                     _currentIcSetting = IcRules.ReturnIcGisTypeSettings(value.Name);
                     // The underscore discards the returned Task, which is a standard
-                    _ = AddProposedFcToMapAsync();
+                    _ = AddRequiredLayersToMapAsync();
                     _ = ProcessSelectedQueueAsync();
                 }
                 else
@@ -1376,35 +1376,95 @@ namespace IC_Loader_Pro
             testerWindow.ShowDialog();
         }
 
-        private async Task AddProposedFcToMapAsync()
+        private async Task AddRequiredLayersToMapAsync()
         {
             if (_currentIcSetting == null || MapView.Active == null) return;
 
-            // Get the rule for the 'proposed' feature class
+            // --- Part 1: Add the Proposed Feature Class ---
             var proposedFcRule = _currentIcSetting.ProposedFeatureClass;
-            if (proposedFcRule == null) return;
-
-            await QueuedTask.Run(async () =>
+            if (proposedFcRule != null && !string.IsNullOrEmpty(proposedFcRule.PostGreFeatureClassName))
             {
-                var activeMap = MapView.Active.Map;
-                // Check if a layer with this datasource already exists
-                if (activeMap.GetLayersAsFlattenedList()
-                    .Any(l => l is FeatureLayer fl && fl.GetFeatureClass().GetName() == proposedFcRule.PostGreFeatureClassName))
+                await QueuedTask.Run(async () =>
                 {
-                    return; // Layer is already on the map
-                }
+                    var activeMap = MapView.Active.Map;
 
-                var gdbService = new Services.GeodatabaseService();
-                using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
-                {
-                    if (proposedFc != null)
+                    // --- THIS IS THE CORRECTED CHECK (using EndsWith) ---
+                    if (activeMap.GetLayersAsFlattenedList().OfType<FeatureLayer>()
+                        .Any(fl => fl.GetFeatureClass()?.GetName().EndsWith(proposedFcRule.PostGreFeatureClassName, StringComparison.OrdinalIgnoreCase) == true))
                     {
-                        var layerParams = new FeatureLayerCreationParams(proposedFc);
-                        LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                        return; // Layer from this source is already on the map
                     }
-                }
-            });
+
+                    var gdbService = new Services.GeodatabaseService();
+                    using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
+                    {
+                        if (proposedFc != null)
+                        {
+                            var layerParams = new FeatureLayerCreationParams(proposedFc) { Name = proposedFcRule.PostGreFeatureClassName };
+                            LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                        }
+                    }
+                });
+            }
+
+            // --- Part 2: Add the Shape Info Table ---
+            var shapeInfoTableRule = _currentIcSetting.ShapeInfoTable;
+            if (shapeInfoTableRule != null && !string.IsNullOrEmpty(shapeInfoTableRule.PostGreFeatureClassName))
+            {
+                await QueuedTask.Run(async () =>
+                {
+                    var activeMap = MapView.Active.Map;
+
+                    // --- THIS IS THE CORRECTED CHECK (using EndsWith) ---
+                    if (activeMap.GetStandaloneTablesAsFlattenedList()
+                        .Any(t => t.GetTable()?.GetName().EndsWith(shapeInfoTableRule.PostGreFeatureClassName, StringComparison.OrdinalIgnoreCase) == true))
+                    {
+                        return; // Table from this source is already in the map
+                    }
+
+                    var gdbService = new Services.GeodatabaseService();
+                    using (var shapeInfoTable = await gdbService.GetTableAsync(shapeInfoTableRule))
+                    {
+                        if (shapeInfoTable != null)
+                        {
+                            var tableParams = new StandaloneTableCreationParams(shapeInfoTable) { Name = shapeInfoTableRule.PostGreFeatureClassName };
+                            StandaloneTableFactory.Instance.CreateStandaloneTable(tableParams, activeMap);
+                        }
+                    }
+                });
+            }
         }
+
+
+        //private async Task AddProposedFcToMapAsync()
+        //{
+        //    if (_currentIcSetting == null || MapView.Active == null) return;
+
+        //    // Get the rule for the 'proposed' feature class
+        //    var proposedFcRule = _currentIcSetting.ProposedFeatureClass;
+        //    if (proposedFcRule == null) return;
+
+        //    await QueuedTask.Run(async () =>
+        //    {
+        //        var activeMap = MapView.Active.Map;
+        //        // Check if a layer with this datasource already exists
+        //        if (activeMap.GetLayersAsFlattenedList()
+        //            .Any(l => l is FeatureLayer fl && fl.GetFeatureClass().GetName() == proposedFcRule.PostGreFeatureClassName))
+        //        {
+        //            return; // Layer is already on the map
+        //        }
+
+        //        var gdbService = new Services.GeodatabaseService();
+        //        using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
+        //        {
+        //            if (proposedFc != null)
+        //            {
+        //                var layerParams = new FeatureLayerCreationParams(proposedFc);
+        //                LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+        //            }
+        //        }
+        //    });
+        //}
 
         #endregion
     }
