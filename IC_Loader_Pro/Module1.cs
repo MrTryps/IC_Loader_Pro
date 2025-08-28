@@ -34,9 +34,14 @@ namespace IC_Loader_Pro
         public static BisDbAccess AccessTool => _accessTool;
         public static Bis_Regex RegexTool => _regexTool;
         public static BisFileTools FileTool => _fileTool;
-        
-        #if DEBUG
-            public static bool IsInTestMode { get; set; } = true;
+
+        /// <summary>
+        /// The required Well-Known ID (WKID) for the project's coordinate system.
+        /// </summary>
+        public const int RequiredWkid = 3424;
+
+#if DEBUG
+        public static bool IsInTestMode { get; set; } = true;
         #else
             public static bool IsInTestMode { get; set; } = false;
         #endif

@@ -21,6 +21,7 @@ using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
+using static IC_Rules_2025.IcTestResult;
 
 namespace IC_Loader_Pro
 {
@@ -235,6 +236,7 @@ namespace IC_Loader_Pro
             try
             {
                 // === Step 1 & 2: Create Deliverable and Save Metadata ===
+                outlookApp = new Outlook.Application();
                 var goodCounts = new Dictionary<string, int>();
                 var dupCounts = new Dictionary<string, int>();
                 StatusMessage = "Creating deliverable record...";
@@ -242,6 +244,7 @@ namespace IC_Loader_Pro
                     "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
                 CurrentDelId = newDelId;
                 _currentEmailTestResult.RefId = newDelId;
+                _currentEmailTestResult.addParameter("prefid", CurrentPrefId);
 
                 await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
                 await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
@@ -267,7 +270,6 @@ namespace IC_Loader_Pro
                         continue;
                     }
 
-                    // --- THIS IS THE CORRECT LOGIC ---
                     // Get the next unique Shape ID from the database service.
                     string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
                     // --- END OF CORRECTION ---
@@ -305,14 +307,25 @@ namespace IC_Loader_Pro
                 // === Step 5: Finalize, Record Results, and Clean Up ===
                 StatusMessage = "Finalizing records...";
 
+                var finalTestResult = testResultService.CompileFinalResults(
+            _currentEmailTestResult,
+            _currentFilesetTestResults,
+            _selectedShapes,
+            newDelId,
+            SelectedIcType.Name,
+            CurrentPrefId);
+
+                finalTestResult.UpdateAllRefIds(newDelId);
+                finalTestResult.addParameter("prefid", CurrentPrefId);
+
                 // Update the final status for the deliverable.
                 await deliverableService.UpdateDeliverableStatusAsync(newDelId, "Migrated", "Pass");
 
                 // Record the final, compiled test results to the database.
-                await testResultService.SaveTestResultsAsync(_currentEmailTestResult, newDelId);
+                await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
 
                 // Send confirmation email (shelled).
-                await notificationService.SendConfirmationEmailAsync(newDelId);
+                await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
 
                 // Move the processed email.
                 StatusMessage = "Moving processed email...";
@@ -457,7 +470,7 @@ namespace IC_Loader_Pro
         }
         private async Task OnShowNotes()
         {
-            Log.RecordMessage("Menu: Notes was clicked.", BisLogMessageType.Note);
+            //Log.RecordMessage("Menu: Notes was clicked.", BisLogMessageType.Note);
             Log.Open();
             await Task.CompletedTask;
         }

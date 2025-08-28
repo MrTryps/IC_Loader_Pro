@@ -14,6 +14,7 @@ using static BIS_Log;
 using Path = System.IO.Path;
 using QueryFilter = ArcGIS.Core.Data.QueryFilter;
 using System.Text.RegularExpressions;
+using static IC_Loader_Pro.Module1;
 
 namespace IC_Loader_Pro.Services
 {
@@ -114,10 +115,7 @@ namespace IC_Loader_Pro.Services
             var geometry = shapeToValidate.Geometry;
 
             // 1: Check and Reproject Spatial Reference ---
-            // We will use the WKID for NAD 1983 State Plane New Jersey FIPS 2900 (US Feet).
-            // The modern WKID is 102711 (the older one was 2260).
-            //var njspfSr = SpatialReferenceBuilder.CreateSpatialReference(2260);
-            var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(geometryRules.ProjectionId);
+            var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(RequiredWkid);
             if (geometry.SpatialReference == null || !geometry.SpatialReference.IsEqual(requiredSr))
             {
                 try

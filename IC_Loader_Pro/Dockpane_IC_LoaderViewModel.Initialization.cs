@@ -103,6 +103,8 @@ namespace IC_Loader_Pro
             try
             {
                 Map map = MapView.Active?.Map;
+                int requiredWkid = RequiredWkid; 
+                var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
 
                 if (map == null)
                 {
@@ -113,36 +115,36 @@ namespace IC_Loader_Pro
                         await ProApp.Panes.CreateMapPaneAsync(map);
                     }
                 }
-
+             
                 if (map == null)
                 {
-                    await QueuedTask.Run(() =>
-                    {
-                        // --- THE CORRECTED LOGIC ---
-                        // Use a standard if-check for the basemap instead of the '??' operator.
-                        Basemap basemap = Basemap.ProjectDefault;
-                        if (basemap == null)
-                        {
-                            Log.RecordMessage("No default basemap found. Falling back to 'Streets'.", BisLogMessageType.Note);
-                            basemap = Basemap.Streets;
-                        }
-
-                        map = MapFactory.Instance.CreateMap("New Map", MapType.Map, MapViewingMode.Map, basemap);
-                    });
+                    // 1. Create the map WITHOUT a basemap first.
+                    map = await QueuedTask.Run(() =>
+                        MapFactory.Instance.CreateMap("New Map", MapType.Map, MapViewingMode.Map, Basemap.None)
+                    );
                     await ProApp.Panes.CreateMapPaneAsync(map);
+
+                    // 2. NOW, set the spatial reference on the empty map.
+                    await QueuedTask.Run(() => {
+                        map.SetSpatialReference(njStatePlane);
+                    });
+
+                    // 3. Finally, add a basemap to the correctly projected map.
+                    await QueuedTask.Run(() => {
+                        var basemap = Basemap.Streets; // Or another basemap of your choice
+                        map.SetBasemapLayers(basemap);
+                    });
+                    // --- END OF NEW LOGIC ---
                 }
 
-                // Now that we have a map, ENSURE it has the correct spatial reference.
-                await QueuedTask.Run(() =>
+                // Check and set the spatial reference for any existing map.
+                if (map.SpatialReference?.Wkid != requiredWkid)
                 {
-                    int requiredWkid = 2260; // NAD 1983 StatePlane New Jersey FIPS 2900 (US Feet)
-                    if (map.SpatialReference?.Wkid != requiredWkid)
-                    {
-                        Log.RecordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", BisLogMessageType.Warning);
-                        var njStatePlane = SpatialReferenceBuilder.CreateSpatialReference(requiredWkid);
+                    Log.RecordMessage($"Map '{map.Name}' is not in the required coordinate system. Forcing it to NJ State Plane.", BisLogMessageType.Warning);
+                    await QueuedTask.Run(() => {
                         map.SetSpatialReference(njStatePlane);
-                    }
-                });
+                    });
+                }
 
                 return map;
             }
@@ -162,7 +164,7 @@ namespace IC_Loader_Pro
             {
                 // This is the full, robust method we built previously
                 string layerName = "manually_added";
-                int requiredWkid = 2260;
+                int requiredWkid = RequiredWkid;
 
                 var existingLayer = map.GetLayersAsFlattenedList().FirstOrDefault(l => l.Name.Equals(layerName, StringComparison.CurrentCultureIgnoreCase)) as FeatureLayer;
                 if (existingLayer != null)

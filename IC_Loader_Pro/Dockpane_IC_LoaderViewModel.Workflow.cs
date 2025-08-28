@@ -256,6 +256,7 @@ namespace IC_Loader_Pro
 
                 _currentEmailTestResult = processingResult.TestResult;
                 _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
+                _currentFilesetTestResults = processingResult.FilesetTestResults;
 
                 switch (_currentEmailTestResult.CumulativeAction.ResultAction)
                 {

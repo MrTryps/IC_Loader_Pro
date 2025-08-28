@@ -60,6 +60,7 @@ namespace IC_Loader_Pro.Services
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+            var filesetTestResults = new List<IcTestResult>();
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
             AttachmentAnalysisResult attachmentAnalysis = null;
 
@@ -123,7 +124,7 @@ namespace IC_Loader_Pro.Services
             // 3. Process Attachments
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
-            rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
+            filesetTestResults.Add(attachmentAnalysis.TestResult);
 
             if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
             {
@@ -154,7 +155,9 @@ namespace IC_Loader_Pro.Services
             }
 
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
-            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, rootTestResult);
+            var featureProcessingContainerTest = _namedTests.returnNewTestResult("GIS_SubmissionFileCheck", emailToProcess.Emailid, IcTestResult.TestType.Submission);
+            List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, featureProcessingContainerTest);
+            filesetTestResults.Add(featureProcessingContainerTest);
             _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);
             if (!foundShapes.Any())
             {
@@ -168,7 +171,8 @@ namespace IC_Loader_Pro.Services
             {
                 TestResult = rootTestResult,
                 AttachmentAnalysis = attachmentAnalysis,
-                ShapeItems = foundShapes
+                ShapeItems = foundShapes,
+                FilesetTestResults = filesetTestResults
             };
         }
 

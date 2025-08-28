@@ -78,6 +78,8 @@ namespace IC_Loader_Pro
         private EmailItem _currentEmail;
         private EmailClassificationResult _currentClassification;
 
+        private List<IcTestResult> _currentFilesetTestResults;
+
         private string _currentEmailId;
         public string CurrentEmailId
         {
@@ -1433,39 +1435,7 @@ namespace IC_Loader_Pro
                     }
                 });
             }
-        }
-
-
-        //private async Task AddProposedFcToMapAsync()
-        //{
-        //    if (_currentIcSetting == null || MapView.Active == null) return;
-
-        //    // Get the rule for the 'proposed' feature class
-        //    var proposedFcRule = _currentIcSetting.ProposedFeatureClass;
-        //    if (proposedFcRule == null) return;
-
-        //    await QueuedTask.Run(async () =>
-        //    {
-        //        var activeMap = MapView.Active.Map;
-        //        // Check if a layer with this datasource already exists
-        //        if (activeMap.GetLayersAsFlattenedList()
-        //            .Any(l => l is FeatureLayer fl && fl.GetFeatureClass().GetName() == proposedFcRule.PostGreFeatureClassName))
-        //        {
-        //            return; // Layer is already on the map
-        //        }
-
-        //        var gdbService = new Services.GeodatabaseService();
-        //        using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
-        //        {
-        //            if (proposedFc != null)
-        //            {
-        //                var layerParams = new FeatureLayerCreationParams(proposedFc);
-        //                LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
-        //            }
-        //        }
-        //    });
-        //}
-
+        }       
         #endregion
     }
 }

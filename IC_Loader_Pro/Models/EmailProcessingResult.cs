@@ -12,5 +12,10 @@ namespace IC_Loader_Pro.Models
         public IcTestResult TestResult { get; set; }
         public AttachmentAnalysisResult AttachmentAnalysis { get; set; }
         public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();
+        // --- ADD THIS NEW PROPERTY ---
+        /// <summary>
+        /// A collection of all test results that are specific to individual filesets.
+        /// </summary>
+        public List<IcTestResult> FilesetTestResults { get; set; } = new List<IcTestResult>();
     }
 }
