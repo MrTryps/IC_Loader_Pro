@@ -77,10 +77,19 @@ namespace IC_Loader_Pro.Services
                             string internetMessageId = mailItem.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x1035001F")?.ToString();
                             if (string.IsNullOrEmpty(internetMessageId)) continue;
 
+                            string subject = mailItem.Subject ?? "";
+                            const string externalTag = "[EXTERNAL]";
+                            if (subject.Trim().StartsWith(externalTag, StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Find the tag and remove it, then trim any leading space.
+                                int tagIndex = subject.IndexOf(externalTag, StringComparison.OrdinalIgnoreCase);
+                                subject = subject.Substring(tagIndex + externalTag.Length).Trim();
+                            }
+
                             results.Add(new EmailItem
                             {
                                 Emailid = internetMessageId,
-                                Subject = mailItem.Subject,
+                                Subject = subject,
                                 ReceivedTime = mailItem.ReceivedTime,
                                 SenderName = mailItem.SenderName,
                                 SenderEmailAddress = senderEmail,
@@ -322,11 +331,17 @@ namespace IC_Loader_Pro.Services
         private EmailItem MapToEmailItem(Outlook.MailItem mailItem)
         {
             if (mailItem == null) return null;
-
+            string subject = mailItem.Subject ?? "";
+            const string externalTag = "[EXTERNAL]";
+            if (subject.Trim().StartsWith(externalTag, StringComparison.OrdinalIgnoreCase))
+            {
+                int tagIndex = subject.IndexOf(externalTag, StringComparison.OrdinalIgnoreCase);
+                subject = subject.Substring(tagIndex + externalTag.Length).Trim();
+            }
             var emailItem = new EmailItem
             {
                 Emailid = mailItem.PropertyAccessor.GetProperty(PR_INTERNET_MESSAGE_ID) as string,
-                Subject = mailItem.Subject,
+                Subject = subject,
                 ReceivedTime = mailItem.ReceivedTime,
                 SenderName = mailItem.SenderName,
                 SenderEmailAddress = mailItem.SenderEmailAddress,

@@ -16,21 +16,21 @@ namespace IC_Loader_Pro.Services
 {
     public class NotificationService
     {
-        public async Task SendConfirmationEmailAsync(string deliverableId, IcTestResult testResult, string icType, Microsoft.Office.Interop.Outlook.Application outlookApp)
+        public async Task<bool> SendConfirmationEmailAsync(string deliverableId, IcTestResult testResult, string icType, Microsoft.Office.Interop.Outlook.Application outlookApp)
         {
             // 1. Build the initial email object.
             var emailToEdit = BuildReplyEmail(deliverableId, testResult, icType);
             if (emailToEdit == null)
             {
                 Log.RecordMessage("Email not built because no recipients were specified.", BisLogMessageType.Note);
-                return;
+                return true;
             }
 
             bool userClickedSend = false;
             // 2. Show the preview window on the UI thread.
             await FrameworkApplication.Current.Dispatcher.InvokeAsync(() =>
             {
-                var previewViewModel = new ViewModels.EmailPreviewViewModel(emailToEdit);
+                var previewViewModel = new ViewModels.EmailPreviewViewModel(emailToEdit, testResult);
                 var previewWindow = new Views.EmailPreviewWindow
                 {
                     DataContext = previewViewModel,
@@ -52,6 +52,8 @@ namespace IC_Loader_Pro.Services
             {
                 Log.RecordMessage("Email send was canceled by the user from the preview window.", BisLogMessageType.Note);
             }
+
+            return userClickedSend;
         }
 
 
@@ -71,7 +73,7 @@ namespace IC_Loader_Pro.Services
             if (finalCumulativeAction.EmailRp == true && !string.IsNullOrEmpty(deliverableInfo.SenderEmail))
             {
                 outgoingEmail.ToRecipients.Add(deliverableInfo.SenderEmail);
-                Log.RecordMessage("--> Decision: Added recipient.", BisLogMessageType.Note);
+              //  Log.RecordMessage("--> Decision: Added recipient.", BisLogMessageType.Note);
             }
             if (finalCumulativeAction.EmailHazsite == true)
             {
@@ -79,7 +81,7 @@ namespace IC_Loader_Pro.Services
             }
             else
             {
-                Log.RecordMessage("--> Decision: Did NOT add recipient because SenderEmail was empty.", BisLogMessageType.Warning);
+              //  Log.RecordMessage("--> Decision: Did NOT add recipient because SenderEmail was empty.", BisLogMessageType.Warning);
             }
             if (!outgoingEmail.ToRecipients.Any() && !outgoingEmail.BccRecipients.Any())
             {

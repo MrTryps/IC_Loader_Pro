@@ -1,5 +1,6 @@
 ﻿using ArcGIS.Core.CIM;
 using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Core;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
@@ -20,8 +21,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
-using Outlook = Microsoft.Office.Interop.Outlook;
 using static IC_Rules_2025.IcTestResult;
+using Outlook = Microsoft.Office.Interop.Outlook;
 
 namespace IC_Loader_Pro
 {
@@ -211,6 +212,160 @@ namespace IC_Loader_Pro
         //    await ProcessNextEmail();
         //}
 
+        //private async Task OnSave()
+        //{
+        //    if (_currentEmailTestResult == null || !_selectedShapes.Any())
+        //    {
+        //        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+        //            "There must be at least one shape in the 'Selected Shapes to Use' list to save.", "Save Error");
+        //        return;
+        //    }
+
+        //    IsEmailActionEnabled = false;
+        //    StatusMessage = "Saving... Please wait.";
+        //    Log.RecordMessage("Save process started.", BisLogMessageType.Note);
+
+        //    var deliverableService = new Services.DeliverableService();
+        //    var submissionService = new Services.SubmissionService();
+        //    var shapeService = new Services.ShapeProcessingService(IcRules, Log);
+        //    var notificationService = new Services.NotificationService();
+        //    var outlookService = new Services.OutlookService();
+        //    var testResultService = new Services.TestResultService();
+        //    Outlook.Application outlookApp = null;
+
+        //    string newDelId = null;
+        //    try
+        //    {
+        //        // === Step 1 & 2: Create Deliverable and Save Metadata ===
+        //        outlookApp = new Outlook.Application();
+        //        var goodCounts = new Dictionary<string, int>();
+        //        var dupCounts = new Dictionary<string, int>();
+        //        StatusMessage = "Creating deliverable record...";
+        //        newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
+        //            "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
+        //        CurrentDelId = newDelId;
+        //        _currentEmailTestResult.RefId = newDelId;
+        //        _currentEmailTestResult.addParameter("prefid", CurrentPrefId);
+
+        //        await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
+        //        await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
+        //        var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
+        //        var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
+        //        await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
+
+        //        // === Step 3: Record Submissions (filesets) ===
+        //        StatusMessage = "Recording submissions...";
+        //        var submissionIdMap = await submissionService.RecordSubmissionsAsync(
+        //            newDelId, SelectedIcType.Name, _currentAttachmentAnalysis.IdentifiedFileSets);
+        //        await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
+
+        //        // === Step 4: Copy Approved Shapes to the 'Proposed' Feature Class ===
+
+        //        foreach (var shapeToSave in _selectedShapes)
+        //        {
+        //            StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
+        //            string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
+        //            if (string.IsNullOrEmpty(submissionId))
+        //            {
+        //                Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+        //                continue;
+        //            }
+
+        //            // Get the next unique Shape ID from the database service.
+        //            string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
+        //            // --- END OF CORRECTION ---
+
+        //            bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
+        //            if (!recordCreated)
+        //            {
+        //                Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
+        //                continue; // Skip to the next shape if the info record fails
+        //            }
+
+        //            bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
+
+        //            if (isDuplicate)
+        //            {
+        //                if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
+        //                dupCounts[submissionId]++;
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
+        //            }
+        //            else
+        //            {
+        //                if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
+        //                goodCounts[submissionId]++;
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
+        //            }
+
+        //            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
+        //            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
+        //            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
+        //            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
+
+        //            await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
+        //        }
+
+        //        // === Step 5: Finalize, Record Results, and Clean Up ===
+        //        StatusMessage = "Finalizing records...";
+
+        //        var finalTestResult = testResultService.CompileFinalResults(
+        //    _currentEmailTestResult,
+        //    _currentFilesetTestResults,
+        //    _selectedShapes,
+        //    newDelId,
+        //    SelectedIcType.Name,
+        //    CurrentPrefId);
+
+        //        finalTestResult.UpdateAllRefIds(newDelId);
+        //        finalTestResult.addParameter("prefid", CurrentPrefId);
+
+        //        // Update the final status for the deliverable.
+        //        await deliverableService.UpdateDeliverableStatusAsync(newDelId, "Migrated", "Pass");
+
+        //        // Record the final, compiled test results to the database.
+        //        await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
+
+        //        // Send confirmation email (shelled).
+        //        await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
+
+        //        // Move the processed email.
+        //        StatusMessage = "Moving processed email...";
+        //        outlookApp = new Outlook.Application();
+        //        // The refactored method now expects the full source and destination paths.
+        //        outlookService.MoveEmailToFolder(
+        //            outlookApp,
+        //            _currentEmail.Emailid,
+        //            _currentIcSetting.OutlookInboxFolderPath,    // Full source path
+        //            _currentIcSetting.OutlookProcessedFolderPath // Full destination path
+        //        );
+
+        //        StatusMessage = $"Successfully saved submission as {newDelId}.";
+        //        SelectedIcType.PassedCount++;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError("A critical error occurred during the save process.", ex, nameof(OnSave));
+        //        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An error occurred while saving. Please check the logs.", "Save Error");
+        //        IsEmailActionEnabled = true;
+        //        return;
+        //    }
+        //    finally
+        //    {
+        //        if (outlookApp != null)
+        //        {
+        //            System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+        //            outlookApp = null;
+        //        }
+        //    }
+
+        //    // Advance to the next email
+        //    if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+        //    {
+        //        emailsToProcess.RemoveAt(0);
+        //    }
+        //    await ProcessNextEmail();
+        //}
+
         private async Task OnSave()
         {
             if (_currentEmailTestResult == null || !_selectedShapes.Any())
@@ -220,151 +375,10 @@ namespace IC_Loader_Pro
                 return;
             }
 
-            IsEmailActionEnabled = false;
-            StatusMessage = "Saving... Please wait.";
-            Log.RecordMessage("Save process started.", BisLogMessageType.Note);
-
-            var deliverableService = new Services.DeliverableService();
-            var submissionService = new Services.SubmissionService();
-            var shapeService = new Services.ShapeProcessingService(IcRules, Log);
-            var notificationService = new Services.NotificationService();
-            var outlookService = new Services.OutlookService();
-            var testResultService = new Services.TestResultService();
-            Outlook.Application outlookApp = null;
-
-            string newDelId = null;
-            try
-            {
-                // === Step 1 & 2: Create Deliverable and Save Metadata ===
-                outlookApp = new Outlook.Application();
-                var goodCounts = new Dictionary<string, int>();
-                var dupCounts = new Dictionary<string, int>();
-                StatusMessage = "Creating deliverable record...";
-                newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
-                    "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
-                CurrentDelId = newDelId;
-                _currentEmailTestResult.RefId = newDelId;
-                _currentEmailTestResult.addParameter("prefid", CurrentPrefId);
-
-                await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
-                await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
-                var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
-                var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
-                await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
-
-                // === Step 3: Record Submissions (filesets) ===
-                StatusMessage = "Recording submissions...";
-                var submissionIdMap = await submissionService.RecordSubmissionsAsync(
-                    newDelId, SelectedIcType.Name, _currentAttachmentAnalysis.IdentifiedFileSets);
-                await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
-
-                // === Step 4: Copy Approved Shapes to the 'Proposed' Feature Class ===
-
-                foreach (var shapeToSave in _selectedShapes)
-                {
-                    StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
-                    string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
-                    if (string.IsNullOrEmpty(submissionId))
-                    {
-                        Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
-                        continue;
-                    }
-
-                    // Get the next unique Shape ID from the database service.
-                    string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
-                    // --- END OF CORRECTION ---
-
-                    bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
-                    if (!recordCreated)
-                    {
-                        Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
-                        continue; // Skip to the next shape if the info record fails
-                    }
-
-                    bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
-
-                    if (isDuplicate)
-                    {
-                        if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
-                        dupCounts[submissionId]++;
-                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
-                    }
-                    else
-                    {
-                        if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
-                        goodCounts[submissionId]++;
-                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
-                    }
-
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
-                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
-
-                    await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
-                }
-
-                // === Step 5: Finalize, Record Results, and Clean Up ===
-                StatusMessage = "Finalizing records...";
-
-                var finalTestResult = testResultService.CompileFinalResults(
-            _currentEmailTestResult,
-            _currentFilesetTestResults,
-            _selectedShapes,
-            newDelId,
-            SelectedIcType.Name,
-            CurrentPrefId);
-
-                finalTestResult.UpdateAllRefIds(newDelId);
-                finalTestResult.addParameter("prefid", CurrentPrefId);
-
-                // Update the final status for the deliverable.
-                await deliverableService.UpdateDeliverableStatusAsync(newDelId, "Migrated", "Pass");
-
-                // Record the final, compiled test results to the database.
-                await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
-
-                // Send confirmation email (shelled).
-                await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
-
-                // Move the processed email.
-                StatusMessage = "Moving processed email...";
-                outlookApp = new Outlook.Application();
-                // The refactored method now expects the full source and destination paths.
-                outlookService.MoveEmailToFolder(
-                    outlookApp,
-                    _currentEmail.Emailid,
-                    _currentIcSetting.OutlookInboxFolderPath,    // Full source path
-                    _currentIcSetting.OutlookProcessedFolderPath // Full destination path
-                );
-
-                StatusMessage = $"Successfully saved submission as {newDelId}.";
-                SelectedIcType.PassedCount++;
-            }
-            catch (Exception ex)
-            {
-                Log.RecordError("A critical error occurred during the save process.", ex, nameof(OnSave));
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An error occurred while saving. Please check the logs.", "Save Error");
-                IsEmailActionEnabled = true;
-                return;
-            }
-            finally
-            {
-                if (outlookApp != null)
-                {
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
-                    outlookApp = null;
-                }
-            }
-
-            // Advance to the next email
-            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
-            {
-                emailsToProcess.RemoveAt(0);
-            }
-            await ProcessNextEmail();
+            // Call the generic finalizer with 'true' for an approved submission.
+            await FinalizeSubmissionAsync(true);
+            SelectedIcType.PassedCount++;
         }
-
 
         private async Task OnSkip()
         {
@@ -401,73 +415,102 @@ namespace IC_Loader_Pro
             }
             await ProcessNextEmail();
         }
+
+        //private async Task OnReject()
+        //{
+        //    Log.RecordMessage("Reject button was clicked.", BisLogMessageType.Note);
+        //    Outlook.Application outlookApp = null;          
+        //    if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
+        //    {
+        //        StatusMessage = "Nothing to reject.";
+        //        return;
+        //    }
+
+        //    // Disable the action buttons while processing
+        //    IsEmailActionEnabled = false;
+        //    StatusMessage = "Processing rejection...";
+
+        //    try
+        //    {
+        //        outlookApp = new Outlook.Application();
+        //        // 1. Create the final test result for the manual rejection.
+        //        var namedTests = new IcNamedTests(Log, PostGreTool);
+        //        var rejectionTestResult = namedTests.returnNewTestResult(
+        //            "GIS_Root_Email_Load",
+        //            CurrentEmailId,
+        //            IcTestResult.TestType.Deliverable
+        //        );
+        //        rejectionTestResult.Passed = false;
+        //        rejectionTestResult.AddComment("Submission was manually rejected by the user.");
+
+        //        // 2. Update the UI stats immediately.
+        //        SelectedIcType.FailedCount++;
+
+        //        // 3. Call the shared rejection logic in the service.
+        //        var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+
+        //        // Get the source folder info needed to move the email.
+        //        string fullOutlookPath = _currentIcSetting.OutlookInboxFolderPath;
+        //        var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
+
+        //        // This call is now much cleaner and delegates the work.
+        //        // It needs to run on a background thread to avoid freezing the UI.
+        //        await QueuedTask.Run(() =>
+        //            processingService.HandleRejection(outlookApp,rejectionTestResult, _currentIcSetting, folderPath, storeName)
+        //        );
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError("An error occurred during the rejection process.", ex, nameof(OnReject));
+        //        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+        //            "An error occurred during the rejection process. Please check the logs.",
+        //            "Rejection Error",
+        //            System.Windows.MessageBoxButton.OK,
+        //            System.Windows.MessageBoxImage.Error);
+        //    }
+        //    finally {                 // Ensure the Outlook application is released properly.
+        //        if (outlookApp != null)
+        //        {
+        //            System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+        //            outlookApp = null;
+        //        }
+        //    }
+
+        //    // 4. Advance to the next email in the queue.
+        //    if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+        //    {
+        //        emailsToProcess.RemoveAt(0);
+        //    }
+        //    await ProcessNextEmail();
+        //}
+
         private async Task OnReject()
         {
-            Log.RecordMessage("Reject button was clicked.", BisLogMessageType.Note);
-            Outlook.Application outlookApp = null;          
             if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
             {
                 StatusMessage = "Nothing to reject.";
                 return;
             }
 
-            // Disable the action buttons while processing
-            IsEmailActionEnabled = false;
-            StatusMessage = "Processing rejection...";
+            // 1. Compile the complete set of test results that were generated during processing.
+            var testResultService = new Services.TestResultService();
+            var finalTestResult = testResultService.CompileFinalResults(
+                _currentEmailTestResult,
+                _currentFilesetTestResults,
+                _selectedShapes,
+                "TEMP_REJECT_ID", // Temporary ID, will be updated by the finalizer
+                SelectedIcType.Name,
+                CurrentPrefId);
 
-            try
-            {
-                outlookApp = new Outlook.Application();
-                // 1. Create the final test result for the manual rejection.
-                var namedTests = new IcNamedTests(Log, PostGreTool);
-                var rejectionTestResult = namedTests.returnNewTestResult(
-                    "GIS_Root_Email_Load",
-                    CurrentEmailId,
-                    IcTestResult.TestType.Deliverable
-                );
-                rejectionTestResult.Passed = false;
-                rejectionTestResult.AddComment("Submission was manually rejected by the user.");
+            // 2. Mark the final result as failed and add the specific manual rejection note.
+            finalTestResult.Passed = false;
+            finalTestResult.AddComment($"Submission was manually rejected by user: {Environment.UserName}");
 
-                // 2. Update the UI stats immediately.
-                SelectedIcType.FailedCount++;
-
-                // 3. Call the shared rejection logic in the service.
-                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-
-                // Get the source folder info needed to move the email.
-                string fullOutlookPath = _currentIcSetting.OutlookInboxFolderPath;
-                var (storeName, folderPath) = OutlookService.ParseOutlookPath(fullOutlookPath);
-
-                // This call is now much cleaner and delegates the work.
-                // It needs to run on a background thread to avoid freezing the UI.
-                await QueuedTask.Run(() =>
-                    processingService.HandleRejection(outlookApp,rejectionTestResult, _currentIcSetting, folderPath, storeName)
-                );
-            }
-            catch (Exception ex)
-            {
-                Log.RecordError("An error occurred during the rejection process.", ex, nameof(OnReject));
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
-                    "An error occurred during the rejection process. Please check the logs.",
-                    "Rejection Error",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Error);
-            }
-            finally {                 // Ensure the Outlook application is released properly.
-                if (outlookApp != null)
-                {
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
-                    outlookApp = null;
-                }
-            }
-
-            // 4. Advance to the next email in the queue.
-            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
-            {
-                emailsToProcess.RemoveAt(0);
-            }
-            await ProcessNextEmail();
+            // Call the generic finalizer with 'false' for a rejected submission.
+            await FinalizeSubmissionAsync(false);
+            SelectedIcType.FailedCount++;
         }
+
         private async Task OnShowNotes()
         {
             //Log.RecordMessage("Menu: Notes was clicked.", BisLogMessageType.Note);
@@ -499,7 +542,7 @@ namespace IC_Loader_Pro
             ShowTestResultWindow(_currentEmailTestResult);
         }
 
-        private void ShowTestResultWindow(IcTestResult testResult)
+        public static void ShowTestResultWindow(IcTestResult testResult)
         {
             if (testResult == null)
             {
@@ -588,6 +631,169 @@ namespace IC_Loader_Pro
                 await ZoomToGeometryAsync(new List<Geometry> { _currentSiteLocation });
             }
         }
+
+        private async Task FinalizeSubmissionAsync(bool wasApproved)
+        {
+            IsEmailActionEnabled = false;
+            StatusMessage = "Finalizing submission...";
+            Log.RecordMessage("Finalization process started.", BisLogMessageType.Note);
+
+            var deliverableService = new Services.DeliverableService();
+            var submissionService = new Services.SubmissionService();
+            var shapeService = new Services.ShapeProcessingService(IcRules, Log);
+            var notificationService = new Services.NotificationService();
+            var outlookService = new Services.OutlookService();
+            var testResultService = new Services.TestResultService();
+            Outlook.Application outlookApp = null;
+
+            string newDelId = null;
+            try
+            {
+                var goodCounts = new Dictionary<string, int>();
+                var dupCounts = new Dictionary<string, int>();
+                outlookApp = new Outlook.Application();
+
+                // 1. Create the main deliverable record
+                newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
+                    "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
+                CurrentDelId = newDelId;
+
+                // 1a. Now, compile the final test result based on whether it was a pass or reject.
+                IcTestResult finalTestResult;
+                if (wasApproved)
+                {
+                    finalTestResult = testResultService.CompileFinalResults(
+                        _currentEmailTestResult,
+                        _currentFilesetTestResults,
+                        _selectedShapes,
+                        newDelId,
+                        SelectedIcType.Name,
+                        CurrentPrefId);
+                }
+                else
+                {
+                    finalTestResult = new IcNamedTests(Log, PostGreTool).returnNewTestResult(
+                        "GIS_Root_Email_Load",
+                        newDelId, // Use the new deliverable ID
+                        IcTestResult.TestType.Deliverable
+                    );
+                    finalTestResult.Passed = false;
+                    finalTestResult.AddComment("Submission was manually rejected by the user.");
+                }
+
+
+                // 2. Update the RefId for all tests to use the new permanent ID
+                finalTestResult.UpdateAllRefIds(newDelId);
+
+                // 3. Save all metadata
+                await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
+                await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
+                var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
+                var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
+                await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
+
+                // 4. Record the submission filesets to get their IDs
+                var submissionIdMap = await submissionService.RecordSubmissionsAsync(
+                    newDelId, SelectedIcType.Name, _currentAttachmentAnalysis.IdentifiedFileSets);
+                await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
+
+                // 5. If the submission was approved, process and save the shapes
+                int goodCount = 0;
+                int dupCount = 0;
+                if (wasApproved)
+                {
+                    foreach (var shapeToSave in _selectedShapes)
+                    {
+                        StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
+                        string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
+                        if (string.IsNullOrEmpty(submissionId))
+                        {
+                            Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+                            continue;
+                        }
+
+                        // Get the next unique Shape ID from the database service.
+                        string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
+
+                        bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
+                        if (!recordCreated)
+                        {
+                            Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
+                            continue; // Skip to the next shape if the info record fails
+                        }
+
+                        bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
+
+                        if (isDuplicate)
+                        {
+                            if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
+                            dupCounts[submissionId]++;
+                            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
+                        }
+                        else
+                        {
+                            if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
+                            goodCounts[submissionId]++;
+                            await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
+                        }
+
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
+                        await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
+
+                        await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
+                    }
+                }
+                
+                // 6. Update database records with final status
+                foreach (var subId in submissionIdMap.Values)
+                {
+                    await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
+                }
+                string finalStatus = (goodCount == 0 && dupCount > 0) ? "Duplicate" : "Migrated";
+                await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, "Pass");
+
+                // 7. Save test results and send notification
+                await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
+                bool emailWasSent =  await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
+
+                if (!emailWasSent)
+                {
+                    StatusMessage = "Operation canceled by user.";
+                    IsEmailActionEnabled = true; // Re-enable the UI
+                    return; // ABORT the finalization
+                }
+
+
+                // 8. Move the processed email
+                outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, _currentIcSetting.OutlookInboxFolderPath, _currentIcSetting.OutlookProcessedFolderPath);
+
+                StatusMessage = $"Successfully finalized submission as {newDelId}.";
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("A critical error occurred during the finalization process.", ex, "FinalizeSubmissionAsync");
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An error occurred during finalization. Please check the logs.", "Error");
+                IsEmailActionEnabled = true; // Re-enable buttons on failure
+                return; // Stop the process
+            }
+            finally
+            {
+                if (outlookApp != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+                }
+            }
+
+            // 9. Advance to the next email
+            if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+            {
+                emailsToProcess.RemoveAt(0);
+            }
+            await ProcessNextEmail();
+        }
+
 
         #endregion
 

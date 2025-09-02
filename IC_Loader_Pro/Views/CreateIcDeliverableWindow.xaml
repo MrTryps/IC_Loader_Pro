@@ -7,8 +7,7 @@
         Title="Create New IC Deliverable" Height="320" Width="500"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         
-        xmlns:viewModels="clr-namespace:IC_Loader_Pro.ViewModels"
-        
+        xmlns:viewModels="clr-namespace:IC_Loader_Pro.ViewModels"        
         d:DataContext="{d:DesignInstance Type=viewModels:CreateIcDeliverableViewModel, IsDesignTimeCreatable=False}">
 
     <Window.Resources>
