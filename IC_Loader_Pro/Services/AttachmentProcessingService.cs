@@ -86,7 +86,6 @@ namespace IC_Loader_Pro.Services
                 TempFolderPath = folderToSearch
             };
 
-            // --- THIS IS THE NEW LOGIC ---
             // First, check if there was even a folder created.
             // The TempFolderPath will only be set if attachments existed to be saved.
             if (string.IsNullOrEmpty(folderToSearch))
@@ -105,11 +104,18 @@ namespace IC_Loader_Pro.Services
                 var unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip_Passed", "", IcTestResult.TestType.Deliverable);
 
                 // This call finds all .zip files and extracts them.
-                var unzippedFilesInfo = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
+                var unzipResult = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
+                var unzippedFilesInfo = unzipResult.Succeeded;
 
-                if (unzippedFilesInfo.Any())
+                if (unzipResult.FailedFiles.Any())
                 {
-                    unzipTestResult.Comments.Add($"Successfully extracted {unzippedFilesInfo.Count} zip file(s).");
+                    // If any files failed, the test fails.
+                    unzipTestResult.Passed = false;
+                    unzipTestResult.AddComment($"Failed to extract {unzipResult.FailedFiles.Count} zip file(s): {string.Join(", ", unzipResult.FailedFiles)}. They may be corrupt.");
+                }
+                else if (unzipResult.Succeeded.Any())
+                {
+                    unzipTestResult.Comments.Add($"Successfully extracted {unzipResult.Succeeded.Count} zip file(s).");
                 }
                 else
                 {
@@ -120,13 +126,15 @@ namespace IC_Loader_Pro.Services
 
                 // Step 2: Identify logical GIS filesets from the entire folder content.
                 analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
-                foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
+
+
+                foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validFileSet))
                 {
                     var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false; // This is a failing test.
                     incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
                     analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
-                    analysisResult.TestResult.Passed = false; // Mark the parent attachment test as failed.
+                    //analysisResult.TestResult.Passed = false; // Mark the parent attachment test as failed.
                 }
 
 

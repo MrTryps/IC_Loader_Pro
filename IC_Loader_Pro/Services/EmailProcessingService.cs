@@ -124,7 +124,11 @@ namespace IC_Loader_Pro.Services
             // 3. Process Attachments
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
-            filesetTestResults.Add(attachmentAnalysis.TestResult);
+            if (attachmentAnalysis.TestResult != null)
+            {
+                filesetTestResults.Add(attachmentAnalysis.TestResult);
+            }       
+
 
             if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
             {

@@ -1,22 +1,25 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression; // Required for ZipFile operations
+using System.IO.Compression;
 using System.Linq;
+using static IC_Loader_Pro.Services.UnzipService;
 
 namespace IC_Loader_Pro.Services
 {
     /// <summary>
-    /// A modern service for finding and extracting zip files within a directory.
+    /// A result class to hold both successes and failures from the unzip process.
     /// </summary>
+    public class UnzipResult
+    {
+        public List<UnzippedFileInfo> Succeeded { get; } = new List<UnzippedFileInfo>();
+        public List<string> FailedFiles { get; } = new List<string>();
+    }
+
     public class UnzipService
     {
         private readonly BIS_Log _log;
 
-        /// <summary>
-        /// Stores the result of a single unzipped file, including its original
-        /// zipped name and the new folder where it was extracted.
-        /// </summary>
         public struct UnzippedFileInfo
         {
             public string OriginalZipFileName { get; set; }
@@ -29,31 +32,25 @@ namespace IC_Loader_Pro.Services
         }
 
         /// <summary>
-        /// Finds and extracts all zip files within a given directory.
+        /// Finds and extracts all zip files within a given directory, returning a result
+        /// object that contains lists of both successful and failed extractions.
         /// </summary>
-        /// <param name="directoryToSearch">The root directory to search for .zip files.</param>
-        /// <param name="deleteOriginalZip">If true, the original .zip file will be deleted after a successful extraction.</param>
-        /// <returns>A list of objects containing information about each file that was unzipped.</returns>
-        public List<UnzippedFileInfo> UnzipAllInDirectory(string directoryToSearch, bool deleteOriginalZip = false)
+        public UnzipResult UnzipAllInDirectory(string directoryToSearch, bool deleteOriginalZip = false)
         {
-            var unzippedFiles = new List<UnzippedFileInfo>();
+            var result = new UnzipResult();
 
             if (string.IsNullOrEmpty(directoryToSearch) || !Directory.Exists(directoryToSearch))
             {
                 _log.RecordError($"The directory provided for unzipping does not exist: '{directoryToSearch}'.", null, nameof(UnzipAllInDirectory));
-                return unzippedFiles; // Return an empty list
+                return result;
             }
 
-            // Get all files with a .zip extension in the directory.
-            // SearchOption.AllDirectories makes this recursive automatically.
             var zipFiles = Directory.GetFiles(directoryToSearch, "*.zip", SearchOption.AllDirectories);
 
             foreach (var zipFile in zipFiles)
             {
                 try
                 {
-                    // Create a unique destination folder for the contents of each zip file.
-                    // This prevents files from different zips from overwriting each other.
                     string destinationFolder = Path.Combine(
                         Path.GetDirectoryName(zipFile),
                         Path.GetFileNameWithoutExtension(zipFile)
@@ -69,37 +66,28 @@ namespace IC_Loader_Pro.Services
 
                     Directory.CreateDirectory(destinationFolder);
 
-                    // --- The Core Logic ---
-                    // This one line handles the entire extraction process.
                     ZipFile.ExtractToDirectory(zipFile, destinationFolder);
-
                     _log.RecordMessage($"Successfully extracted '{zipFile}' to '{destinationFolder}'.", BIS_Log.BisLogMessageType.Note);
 
-                    unzippedFiles.Add(new UnzippedFileInfo
+                    result.Succeeded.Add(new UnzippedFileInfo
                     {
                         OriginalZipFileName = zipFile,
                         ExtractionPath = destinationFolder
                     });
 
-                    // Optionally, delete the original .zip file after extraction.
                     if (deleteOriginalZip)
                     {
                         File.Delete(zipFile);
                     }
                 }
-                catch (InvalidDataException ex)
-                {
-                    _log.RecordError($"The file '{zipFile}' is not a valid zip archive and could not be extracted.", ex, nameof(UnzipAllInDirectory));
-                    // Continue to the next file
-                }
                 catch (Exception ex)
                 {
-                    _log.RecordError($"An unexpected error occurred while extracting '{zipFile}'.", ex, nameof(UnzipAllInDirectory));
-                    // Continue to the next file
+                    _log.RecordError($"Failed to extract '{zipFile}'. It may be corrupt or invalid.", ex, nameof(UnzipAllInDirectory));
+                    // Add the failed file to our result list
+                    result.FailedFiles.Add(Path.GetFileName(zipFile));
                 }
             }
-
-            return unzippedFiles;
+            return result;
         }
     }
 }
