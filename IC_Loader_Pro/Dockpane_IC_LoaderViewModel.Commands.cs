@@ -374,9 +374,19 @@ namespace IC_Loader_Pro
                     "There must be at least one shape in the 'Selected Shapes to Use' list to save.", "Save Error");
                 return;
             }
+            // the new block - may need to remove
+            var testResultService = new Services.TestResultService();
+            var finalTestResult = testResultService.CompileFinalResults(
+                _currentEmailTestResult,
+                _currentFilesetTestResults,
+                _selectedShapes,
+                "TEMP_SAVE_ID", // This will be updated by the finalizer
+                SelectedIcType.Name,
+                CurrentPrefId);
+
 
             // Call the generic finalizer with 'true' for an approved submission.
-            await FinalizeSubmissionAsync(true);
+            await FinalizeSubmissionAsync(finalTestResult);
             SelectedIcType.PassedCount++;
         }
 
@@ -483,7 +493,6 @@ namespace IC_Loader_Pro
         //    }
         //    await ProcessNextEmail();
         //}
-
         private async Task OnReject()
         {
             if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
@@ -506,8 +515,8 @@ namespace IC_Loader_Pro
             finalTestResult.Passed = false;
             finalTestResult.AddComment($"Submission was manually rejected by user: {Environment.UserName}");
 
-            // Call the generic finalizer with 'false' for a rejected submission.
-            await FinalizeSubmissionAsync(false);
+            // Call the generic finalizer with the complete, failed test result object.
+            await FinalizeSubmissionAsync(finalTestResult);
             SelectedIcType.FailedCount++;
         }
 
@@ -550,11 +559,11 @@ namespace IC_Loader_Pro
                 return;
             }
 
-            // This logic is moved from OnShowResults
             var testResultViewModel = new ViewModels.TestResultViewModel(testResult);
             var testResultWindow = new Views.TestResultWindow
             {
-                DataContext = testResultViewModel,
+                // We wrap the root ViewModel in a list so the TreeView can display it
+                DataContext = new { RootResult = new List<ViewModels.TestResultViewModel> { testResultViewModel } },
                 Owner = FrameworkApplication.Current.MainWindow
             };
             testResultWindow.ShowDialog();
@@ -632,7 +641,168 @@ namespace IC_Loader_Pro
             }
         }
 
-        private async Task FinalizeSubmissionAsync(bool wasApproved)
+        //private async Task FinalizeSubmissionAsync(bool wasApproved)
+        //{
+        //    IsEmailActionEnabled = false;
+        //    StatusMessage = "Finalizing submission...";
+        //    Log.RecordMessage("Finalization process started.", BisLogMessageType.Note);
+
+        //    var deliverableService = new Services.DeliverableService();
+        //    var submissionService = new Services.SubmissionService();
+        //    var shapeService = new Services.ShapeProcessingService(IcRules, Log);
+        //    var notificationService = new Services.NotificationService();
+        //    var outlookService = new Services.OutlookService();
+        //    var testResultService = new Services.TestResultService();
+        //    Outlook.Application outlookApp = null;
+
+        //    string newDelId = null;
+        //    try
+        //    {
+        //        var goodCounts = new Dictionary<string, int>();
+        //        var dupCounts = new Dictionary<string, int>();
+        //        outlookApp = new Outlook.Application();
+
+        //        // 1. Create the main deliverable record
+        //        newDelId = await deliverableService.CreateNewDeliverableRecordAsync(
+        //            "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
+        //        CurrentDelId = newDelId;
+
+        //        // 1a. Now, compile the final test result based on whether it was a pass or reject.
+        //        IcTestResult finalTestResult;
+        //        if (wasApproved)
+        //        {
+        //            finalTestResult = testResultService.CompileFinalResults(
+        //                _currentEmailTestResult,
+        //                _currentFilesetTestResults,
+        //                _selectedShapes,
+        //                newDelId,
+        //                SelectedIcType.Name,
+        //                CurrentPrefId);
+        //        }
+        //        else
+        //        {
+        //            finalTestResult = new IcNamedTests(Log, PostGreTool).returnNewTestResult(
+        //                "GIS_Root_Email_Load",
+        //                newDelId, // Use the new deliverable ID
+        //                IcTestResult.TestType.Deliverable
+        //            );
+        //            finalTestResult.Passed = false;
+        //            finalTestResult.AddComment("Submission was manually rejected by the user.");
+        //        }
+
+
+        //        // 2. Update the RefId for all tests to use the new permanent ID
+        //        finalTestResult.UpdateAllRefIds(newDelId);
+
+        //        // 3. Save all metadata
+        //        await deliverableService.UpdateEmailInfoRecordAsync(newDelId, _currentEmail, _currentClassification, _currentIcSetting.OutlookInboxFolderPath);
+        //        await deliverableService.UpdateContactInfoRecordAsync(newDelId, _currentEmail);
+        //        var bodyParser = new Services.EmailBodyParserService(SelectedIcType.Name);
+        //        var bodyData = bodyParser.GetFieldsFromBody(_currentEmail.Body);
+        //        await deliverableService.UpdateBodyDataRecordAsync(newDelId, bodyData);
+
+        //        // 4. Record the submission filesets to get their IDs
+        //        var submissionIdMap = await submissionService.RecordSubmissionsAsync(
+        //            newDelId, SelectedIcType.Name, _currentAttachmentAnalysis.IdentifiedFileSets);
+        //        await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
+
+        //        // 5. If the submission was approved, process and save the shapes
+        //        int goodCount = 0;
+        //        int dupCount = 0;
+        //        if (wasApproved)
+        //        {
+        //            foreach (var shapeToSave in _selectedShapes)
+        //            {
+        //                StatusMessage = $"Processing shape {shapeToSave.ShapeReferenceId}...";
+        //                string submissionId = submissionIdMap.GetValueOrDefault(shapeToSave.SourceFile);
+        //                if (string.IsNullOrEmpty(submissionId))
+        //                {
+        //                    Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+        //                    continue;
+        //                }
+
+        //                // Get the next unique Shape ID from the database service.
+        //                string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
+
+        //                bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
+        //                if (!recordCreated)
+        //                {
+        //                    Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
+        //                    continue; // Skip to the next shape if the info record fails
+        //                }
+
+        //                bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
+
+        //                if (isDuplicate)
+        //                {
+        //                    if (!dupCounts.ContainsKey(submissionId)) dupCounts[submissionId] = 0;
+        //                    dupCounts[submissionId]++;
+        //                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "Duplicate", SelectedIcType.Name);
+        //                }
+        //                else
+        //                {
+        //                    if (!goodCounts.ContainsKey(submissionId)) goodCounts[submissionId] = 0;
+        //                    goodCounts[submissionId]++;
+        //                    await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SHAPE_STATUS", "To Be Reviewed", SelectedIcType.Name);
+        //                }
+
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CREATED_BY", "Crawler", SelectedIcType.Name);
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_X", shapeToSave.Geometry.Extent.Center.X, SelectedIcType.Name);
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
+        //                await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
+
+        //                await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
+        //            }
+        //        }
+
+        //        // 6. Update database records with final status
+        //        foreach (var subId in submissionIdMap.Values)
+        //        {
+        //            await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
+        //        }
+        //        string finalStatus = (goodCount == 0 && dupCount > 0) ? "Duplicate" : "Migrated";
+        //        await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, "Pass");
+
+        //        // 7. Save test results and send notification
+        //        await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
+        //        bool emailWasSent =  await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
+
+        //        if (!emailWasSent)
+        //        {
+        //            StatusMessage = "Operation canceled by user.";
+        //            IsEmailActionEnabled = true; // Re-enable the UI
+        //            return; // ABORT the finalization
+        //        }
+
+
+        //        // 8. Move the processed email
+        //        outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, _currentIcSetting.OutlookInboxFolderPath, _currentIcSetting.OutlookProcessedFolderPath);
+
+        //        StatusMessage = $"Successfully finalized submission as {newDelId}.";
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError("A critical error occurred during the finalization process.", ex, "FinalizeSubmissionAsync");
+        //        ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An error occurred during finalization. Please check the logs.", "Error");
+        //        IsEmailActionEnabled = true; // Re-enable buttons on failure
+        //        return; // Stop the process
+        //    }
+        //    finally
+        //    {
+        //        if (outlookApp != null)
+        //        {
+        //            System.Runtime.InteropServices.Marshal.ReleaseComObject(outlookApp);
+        //        }
+        //    }
+
+        //    // 9. Advance to the next email
+        //    if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
+        //    {
+        //        emailsToProcess.RemoveAt(0);
+        //    }
+        //    await ProcessNextEmail();
+        //}
+        private async Task FinalizeSubmissionAsync(IcTestResult finalTestResult)
         {
             IsEmailActionEnabled = false;
             StatusMessage = "Finalizing submission...";
@@ -658,30 +828,6 @@ namespace IC_Loader_Pro
                     "EMAIL", SelectedIcType.Name, CurrentPrefId, _currentEmail.ReceivedTime);
                 CurrentDelId = newDelId;
 
-                // 1a. Now, compile the final test result based on whether it was a pass or reject.
-                IcTestResult finalTestResult;
-                if (wasApproved)
-                {
-                    finalTestResult = testResultService.CompileFinalResults(
-                        _currentEmailTestResult,
-                        _currentFilesetTestResults,
-                        _selectedShapes,
-                        newDelId,
-                        SelectedIcType.Name,
-                        CurrentPrefId);
-                }
-                else
-                {
-                    finalTestResult = new IcNamedTests(Log, PostGreTool).returnNewTestResult(
-                        "GIS_Root_Email_Load",
-                        newDelId, // Use the new deliverable ID
-                        IcTestResult.TestType.Deliverable
-                    );
-                    finalTestResult.Passed = false;
-                    finalTestResult.AddComment("Submission was manually rejected by the user.");
-                }
-
-
                 // 2. Update the RefId for all tests to use the new permanent ID
                 finalTestResult.UpdateAllRefIds(newDelId);
 
@@ -700,7 +846,7 @@ namespace IC_Loader_Pro
                 // 5. If the submission was approved, process and save the shapes
                 int goodCount = 0;
                 int dupCount = 0;
-                if (wasApproved)
+                if (finalTestResult.Passed)
                 {
                     foreach (var shapeToSave in _selectedShapes)
                     {
@@ -745,7 +891,7 @@ namespace IC_Loader_Pro
                         await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
                     }
                 }
-                
+
                 // 6. Update database records with final status
                 foreach (var subId in submissionIdMap.Values)
                 {
@@ -756,7 +902,7 @@ namespace IC_Loader_Pro
 
                 // 7. Save test results and send notification
                 await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
-                bool emailWasSent =  await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
+                bool emailWasSent = await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
 
                 if (!emailWasSent)
                 {
@@ -793,7 +939,6 @@ namespace IC_Loader_Pro
             }
             await ProcessNextEmail();
         }
-
 
         #endregion
 

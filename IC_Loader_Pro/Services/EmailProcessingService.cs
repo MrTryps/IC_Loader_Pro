@@ -1,14 +1,20 @@
-﻿using ArcGIS.Core.Geometry;
+﻿using ArcGIS.Core.Data.UtilityNetwork.Trace;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Core.Internal.Threading.Tasks;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
 using IC_Rules_2025;
+using Microsoft.Graph.Models;
+using Microsoft.Office.Interop.Outlook;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime;
 using System.Threading.Tasks;
+using System.Windows.Documents;
 using System.Windows.Media;
+using static ArcGIS.Desktop.Internal.Mapping.Symbology.GlyphPickerViewModel;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
 using Outlook = Microsoft.Office.Interop.Outlook;
@@ -46,6 +52,130 @@ namespace IC_Loader_Pro.Services
         /// <param name="sourceStoreName">The name of the Outlook store (mailbox) where the email resides.</param>
         /// <returns>The master test result for the entire operation.</returns>
         // The method's return type is changed to our new wrapper class
+        // public async Task<EmailProcessingResult> ProcessEmailAsync(Outlook.Application outlookApp, EmailItem emailToProcess, EmailClassificationResult classification, string selectedIcType,
+        //string sourceFolderPath,
+        //string sourceStoreName,
+        //bool wasManuallyClassified,
+        //EmailType finalType,
+        //Func<string, Task<MapPoint>> getSiteCoordsTask)
+        // {
+        //     _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
+
+        //     var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+        //     var filesetTestResults = new List<IcTestResult>();
+        //     var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
+        //     AttachmentAnalysisResult attachmentAnalysis = null;
+
+        //     if (currentIcSetting == null)
+        //     {
+        //         rootTestResult.Passed = false;
+        //         rootTestResult.Comments.Add($"Fatal error: Rules for queue '{selectedIcType}' not found.");
+        //         return new EmailProcessingResult { TestResult = rootTestResult };
+        //     }
+
+        //     var subjectLineTest = _namedTests.returnNewTestResult("GIS_Subjectline_Tests", "-1", IcTestResult.TestType.Deliverable);
+        //     if (wasManuallyClassified)
+        //     {
+        //         subjectLineTest.AddComment($"User manually classified email as '{finalType}'.");
+        //     }
+        //     subjectLineTest.Passed = !string.IsNullOrWhiteSpace(emailToProcess.Subject);
+        //     subjectLineTest.AddComment(subjectLineTest.Passed ? "Subject line is present." : "Original subject was empty.");
+        //     rootTestResult.AddSubordinateTestResult(subjectLineTest);
+
+        //     var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, getSiteCoordsTask);
+        //     rootTestResult.AddSubordinateTestResult(prefIdTest);
+
+        //     var outlookService = new OutlookService();
+
+        //     // 1. Handle Spam, Auto-Replies, and Mismatched IC Types
+        //     if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse || (finalType.Name != selectedIcType && !wasManuallyClassified))
+        //     {
+        //         string moveReason;
+        //         string fullDestPath;
+
+        //         if (finalType.Name != selectedIcType && !wasManuallyClassified)
+        //         {
+        //             var correctIcSetting = _rules.ReturnIcGisTypeSettings(finalType.Name);
+        //             moveReason = $"Email type '{finalType.Name}' does not match the selected queue '{selectedIcType}'.";
+        //             fullDestPath = correctIcSetting?.OutlookInboxFolderPath;
+        //         }
+        //         else
+        //         {
+        //             moveReason = $"Email identified as {finalType.Name}.";
+        //             fullDestPath = finalType == EmailType.Spam ?
+        //                 currentIcSetting.OutlookSpamFolderPath :
+        //                 currentIcSetting.OutlookCorrespondenceFolderPath;
+        //         }
+
+        //         if (!string.IsNullOrEmpty(fullDestPath))
+        //         {
+        //             NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, fullDestPath, moveReason);
+        //         }
+
+        //         // Return a result with a null TestResult to signal an automatic advance.
+        //         return new EmailProcessingResult { TestResult = null };
+        //     }
+
+        //     // 3. Process Attachments
+        //     var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
+        //     attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
+        //     if (attachmentAnalysis.TestResult != null)
+        //     {
+        //         filesetTestResults.Add(attachmentAnalysis.TestResult);
+        //     }       
+
+
+        //     if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
+        //     {
+        //         rootTestResult.Passed = false; // The overall process is not a "pass"
+        //         rootTestResult.Comments.Add("No attachments found. Treating as Correspondence.");
+
+        //         string reason = "Email contains no attachments to process.";
+        //         NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
+
+        //         return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+        //     }
+
+        //     if (attachmentAnalysis.TestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
+        //     {
+        //         HandleRejection(outlookApp, rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
+        //         return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+        //     }
+
+        //     //  Handle No GIS Files Found
+        //     if (!attachmentAnalysis.IdentifiedFileSets.Any())
+        //     {
+        //         rootTestResult.Passed = false;
+        //         rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
+        //         string reason = "No valid GIS datasets found in attachments.";
+        //         NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
+        //         // outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath);
+        //         return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+        //     }
+
+        //     var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
+        //     var featureProcessingContainerTest = _namedTests.returnNewTestResult("GIS_SubmissionFileCheck", emailToProcess.Emailid, IcTestResult.TestType.Submission);
+        //     List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, featureProcessingContainerTest);
+        //     filesetTestResults.Add(featureProcessingContainerTest);
+        //     _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);
+        //     if (!foundShapes.Any())
+        //     {
+        //         rootTestResult.Passed = false;
+        //         rootTestResult.AddComment("The submission contained GIS files, but no readable polygon features were found within them.");
+        //     }
+
+        //     await Task.CompletedTask;
+
+        //     return new EmailProcessingResult
+        //     {
+        //         TestResult = rootTestResult,
+        //         AttachmentAnalysis = attachmentAnalysis,
+        //         ShapeItems = foundShapes,
+        //         FilesetTestResults = filesetTestResults
+        //     };
+        // }
+ 
+
         public async Task<EmailProcessingResult> ProcessEmailAsync(
        Outlook.Application outlookApp,
        EmailItem emailToProcess,
@@ -60,7 +190,6 @@ namespace IC_Loader_Pro.Services
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
-            var filesetTestResults = new List<IcTestResult>();
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
             AttachmentAnalysisResult attachmentAnalysis = null;
 
@@ -85,7 +214,6 @@ namespace IC_Loader_Pro.Services
 
             var outlookService = new OutlookService();
 
-            // 1. Handle Spam, Auto-Replies, and Mismatched IC Types
             if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse || (finalType.Name != selectedIcType && !wasManuallyClassified))
             {
                 string moveReason;
@@ -110,51 +238,42 @@ namespace IC_Loader_Pro.Services
                     NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, fullDestPath, moveReason);
                 }
 
-                // Return a result with a null TestResult to signal an automatic advance.
                 return new EmailProcessingResult { TestResult = null };
             }
 
-            // 3. Process Attachments
+            // Process Attachments
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
-            if (attachmentAnalysis.TestResult != null)
-            {
-                filesetTestResults.Add(attachmentAnalysis.TestResult);
-            }       
-
+            rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
 
             if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
             {
-                rootTestResult.Passed = false; // The overall process is not a "pass"
+                rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("No attachments found. Treating as Correspondence.");
-
                 string reason = "Email contains no attachments to process.";
-                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
-
-                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+                NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
+                return new EmailProcessingResult { TestResult = null, AttachmentAnalysis = attachmentAnalysis };
             }
 
             if (attachmentAnalysis.TestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
             {
-                HandleRejection(outlookApp, rootTestResult, currentIcSetting, sourceFolderPath, sourceStoreName);
                 return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
-            //  Handle No GIS Files Found
             if (!attachmentAnalysis.IdentifiedFileSets.Any())
             {
                 rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
                 string reason = "No valid GIS datasets found in attachments.";
-                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason, emailToProcess.Subject);
-                // outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath);
-                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+                NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
+                return new EmailProcessingResult { TestResult = null, AttachmentAnalysis = attachmentAnalysis };
             }
 
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
             var featureProcessingContainerTest = _namedTests.returnNewTestResult("GIS_SubmissionFileCheck", emailToProcess.Emailid, IcTestResult.TestType.Submission);
             List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, featureProcessingContainerTest);
-            filesetTestResults.Add(featureProcessingContainerTest);
+            rootTestResult.AddSubordinateTestResult(featureProcessingContainerTest);
+
             _log.RecordMessage($"Successfully extracted and analyzed {foundShapes.Count} shape features.", BisLogMessageType.Note);
             if (!foundShapes.Any())
             {
@@ -168,10 +287,19 @@ namespace IC_Loader_Pro.Services
             {
                 TestResult = rootTestResult,
                 AttachmentAnalysis = attachmentAnalysis,
-                ShapeItems = foundShapes,
-                FilesetTestResults = filesetTestResults
+                ShapeItems = foundShapes
             };
         }
+
+
+
+
+
+
+
+
+
+
         /// <summary>
         /// Displays a notification to the user and then moves an email to a specified folder.
         /// </summary>

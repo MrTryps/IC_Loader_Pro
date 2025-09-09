@@ -4,13 +4,19 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewModels="clr-namespace:IC_Loader_Pro.ViewModels"
+        xmlns:localConverters="clr-namespace:IC_Loader_Pro.ValueConverters"
         mc:Ignorable="d"
         Title="Preview and Edit Email" Height="600" Width="800"
-        WindowStartupLocation="CenterOwner"        
+        WindowStartupLocation="CenterOwner"
         >
+    <Window.Resources>
+        <localConverters:StringListConverter x:Key="StringListConverter" />
+    </Window.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -25,34 +31,36 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Recipient(s):" VerticalAlignment="Center" Margin="0,0,10,5"/>
-        <ListBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding ToRecipients}" Margin="0,0,0,5" MaxHeight="60"/>
-        <StackPanel Grid.Row="0" Grid.Column="2" VerticalAlignment="Center">
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="To:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ToRecipients, Converter={StaticResource StringListConverter}, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5" MaxHeight="60"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="CC:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+        <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding CcRecipients, Converter={StaticResource StringListConverter}, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5" MaxHeight="60"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="BCC:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+        <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding BccRecipients, Converter={StaticResource StringListConverter}, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,5" MaxHeight="60"/>
+
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Subject Line:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+        <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Subject}" VerticalAlignment="Center" Margin="0,0,0,5"/>
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Files Included:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+        <ListBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding Attachments}" Margin="0,0,0,5" MaxHeight="60"/>
+        <StackPanel Grid.Row="4" Grid.Column="2" VerticalAlignment="Center">
             <Button Content="Add" Width="60" Margin="2"/>
             <Button Content="Remove" Width="60" Margin="2"/>
         </StackPanel>
 
-        <TextBlock Grid.Row="1" Grid.Column="0" Text="Subject Line:" VerticalAlignment="Center" Margin="0,0,10,5"/>
-        <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Subject}" VerticalAlignment="Center" Margin="0,0,0,5"/>
-
-        <TextBlock Grid.Row="2" Grid.Column="0" Text="Files Included:" VerticalAlignment="Center" Margin="0,0,10,5"/>
-        <ListBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding Attachments}" Margin="0,0,0,5" MaxHeight="60"/>
-        <StackPanel Grid.Row="2" Grid.Column="2" VerticalAlignment="Center">
-            <Button Content="Add" Width="60" Margin="2"/>
-            <Button Content="Remove" Width="60" Margin="2"/>
-        </StackPanel>
-
-        <GroupBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" Header="HTML (Editable)">
+        <GroupBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Header="HTML (Editable)">
             <TextBox Text="{Binding HtmlBody, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
         </GroupBox>
 
-        <Button Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" Content="Refresh Preview" Click="RefreshButton_Click" HorizontalAlignment="Center" Margin="5"/>
+        <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" Content="Refresh Preview" Click="RefreshButton_Click" HorizontalAlignment="Center" Margin="5"/>
 
-        <GroupBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Header="Live Preview">
+        <GroupBox Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3" Header="Live Preview">
             <WebBrowser x:Name="PreviewBrowser"/>
         </GroupBox>
 
-        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+        <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="Show Results" Command="{Binding ShowResultsCommand}" Width="100" Margin="0,0,20,0"/>
             <Button Content="Send" IsDefault="True" Click="SendButton_Click" Width="80" Margin="0,0,10,0"/>
             <Button Content="Cancel" IsCancel="True" Width="80"/>

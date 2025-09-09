@@ -3,38 +3,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:localConverters="clr-namespace:IC_Loader_Pro.ValueConverters"
         mc:Ignorable="d"
         Title="Test Results" Height="450" Width="600"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="10">
-        <TreeView>
-            <TreeViewItem IsExpanded="True">
-
-                <TreeViewItem.Header>
+        <TreeView ItemsSource="{Binding RootResult}">
+            <TreeView.ItemTemplate>
+                <HierarchicalDataTemplate ItemsSource="{Binding SubResults}">
                     <StackPanel Orientation="Horizontal">
                         <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,5,0"/>
                         <TextBlock Text="{Binding TestName}" FontWeight="Bold"/>
                         <TextBlock Text=": "/>
                         <TextBlock Text="{Binding Comments}" TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
-                </TreeViewItem.Header>
-
-                <TreeViewItem.ItemsSource>
-                    <Binding Path="SubResults"/>
-                </TreeViewItem.ItemsSource>
-
-                <TreeViewItem.ItemTemplate>
-                    <HierarchicalDataTemplate ItemsSource="{Binding SubResults}">
-                        <StackPanel Orientation="Horizontal">
-                            <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,5,0"/>
-                            <TextBlock Text="{Binding TestName}" FontWeight="Bold"/>
-                            <TextBlock Text=": "/>
-                            <TextBlock Text="{Binding Comments}" TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-                    </HierarchicalDataTemplate>
-                </TreeViewItem.ItemTemplate>
-
-            </TreeViewItem>
+                </HierarchicalDataTemplate>
+            </TreeView.ItemTemplate>
         </TreeView>
     </Grid>
 </Window>

@@ -73,85 +73,78 @@ namespace IC_Loader_Pro.Services
             if (finalCumulativeAction.EmailRp == true && !string.IsNullOrEmpty(deliverableInfo.SenderEmail))
             {
                 outgoingEmail.ToRecipients.Add(deliverableInfo.SenderEmail);
-              //  Log.RecordMessage("--> Decision: Added recipient.", BisLogMessageType.Note);
             }
             if (finalCumulativeAction.EmailHazsite == true)
             {
                 outgoingEmail.BccRecipients.Add("SRPGIS@dep.nj.gov");
             }
-            else
-            {
-              //  Log.RecordMessage("--> Decision: Did NOT add recipient because SenderEmail was empty.", BisLogMessageType.Warning);
-            }
+
             if (!outgoingEmail.ToRecipients.Any() && !outgoingEmail.BccRecipients.Any())
             {
                 return null;
             }
 
-            // 1. Create an instance of the IcNamedTests class, which now contains our template-filling logic.
             var namedTests = new IcNamedTests(Log, PostGreTool);
-
-            // 2. Prepare the dictionary of dynamic values. Note the keys do NOT have brackets.
             var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        { "DELID", deliverableId },
-        { "PREFID", testResult.OutputParams.GetValueOrDefault("prefid", "N/A") },
-        { "SUBJECTLINE", deliverableInfo.SubjectLine },
-        { "SENDDATE", deliverableInfo.SubmitDate },
-        {"Ic_Type", icType  }
-    };
+            {
+                { "DELID", deliverableId },
+                { "PREFID", testResult.OutputParams.GetValueOrDefault("prefid", "N/A") },
+                { "SUBJECTLINE", deliverableInfo.SubjectLine },
+                { "SENDDATE", deliverableInfo.SubmitDate },
+                {"Ic_Type", icType  }
+            };
 
-            // 3. Determine which templates to use.
             var rootRule = testResult.TestRule;
             string subjectTemplate;
-
-            // 1. Assemble the complete template for the opening text into a single string.
             string openingTextTemplate = "<P><div align='right'>{Template_GIS_OutgoingEmailID_Small}</DIV></P>";
 
-            // 2. Append the correct pass/fail message template.
+            // --- START OF MODIFIED LOGIC ---
             if (testResult.CumulativeAction.ResultAction == TestActionResponse.Fail)
             {
-                subjectTemplate = rootRule.FailSubject.ReplacementText;
-                openingTextTemplate += rootRule.FailMessage.ReplacementText;
-                openingTextTemplate += "{Template_GIS_Rejected}"; // Add postscript for rejection
+                subjectTemplate = rootRule.FailSubject?.ReplacementText ?? "Submission Processing Issue";
+
+                // Add the main failure message from the root rule to the opening text
+                openingTextTemplate += rootRule.FailMessage?.ReplacementText ?? "";
+
+                // Build the detailed list of specific failure reasons for the main body.
+                var failureReasons = new List<string>();
+                BuildRejectionBody(testResult, failureReasons, namedTests, parameters);
+                if (failureReasons.Any())
+                {
+                    // Add each specific, formatted failure reason to the main body of the email.
+                    foreach (var reason in failureReasons)
+                    {
+                        outgoingEmail.AddToMainBody(reason);
+                    }
+                }
+
+                // Add the standard rejection closing text.
+                openingTextTemplate += "{Template_GIS_Rejected}";
             }
             else // Pass
             {
-                subjectTemplate = rootRule.PassSubject.ReplacementText;
-                openingTextTemplate += rootRule.PassMessage.ReplacementText;
+                subjectTemplate = rootRule.PassSubject?.ReplacementText ?? "Submission Processed";
+                openingTextTemplate += rootRule.PassMessage?.ReplacementText ?? "";
             }
+            // --- END OF MODIFIED LOGIC ---
 
-            // 3. Now, run the complete, assembled templates through the FillAllParameters method.
             var subjectResult = namedTests.FillAllParameters(subjectTemplate, parameters);
             var bodyResult = namedTests.FillAllParameters(openingTextTemplate, parameters);
 
-            // 4. Assign the fully processed text to the email object.
             outgoingEmail.Subject = subjectResult.ProcessedText;
             outgoingEmail.AddToOpeningText(bodyResult.ProcessedText);
 
             var allMissingParams = subjectResult.MissingParameters.Union(bodyResult.MissingParameters).ToList();
             if (allMissingParams.Any())
             {
-                // 3. If parameters are missing, show the temporary MessageBox for debugging.
                 string missingParamsMessage = "The following parameters were found in the email templates but were not provided:\n\n- " +
                                               string.Join("\n- ", allMissingParams);
 
-                // This needs to run on the UI thread.
                 FrameworkApplication.Current.Dispatcher.Invoke(() =>
                 {
                     ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(missingParamsMessage, "Missing Email Parameters");
                 });
             }
-
-            //// 6. Add any postscript text from the rule.
-            //if (rootRule.PostscriptText != null)
-            //{
-            //    foreach (var postscript in rootRule.PostscriptText)
-            //    {
-            //        outgoingEmail.AddToClosingText(namedTests.FillAllParameters(postscript, parameters));
-            //    }
-            //}
-            //// --- END OF UPDATED LOGIC ---
 
             return outgoingEmail;
         }
@@ -276,5 +269,29 @@ namespace IC_Loader_Pro.Services
                 if (mailItem != null) Marshal.ReleaseComObject(mailItem);
             }
         }
+        /// <summary>
+        /// Recursively traverses a test result hierarchy to build a list of formatted failure messages
+        /// using the 'FailMessage' template from each failed test rule.
+        /// </summary>
+        private void BuildRejectionBody(IcTestResult testResult, List<string> failureMessages, IcNamedTests namedTests, Dictionary<string, string> parameters)
+        {
+            // If the test itself failed and it has a specific failure message template, process it.
+            if (!testResult.Passed && testResult.TestRule.FailMessage != null && !string.IsNullOrEmpty(testResult.TestRule.FailMessage.ReplacementText))
+            {
+                // Fill in any parameters (like {Ic_Type}) in the failure message.
+                var filledTemplateResult = namedTests.FillAllParameters(testResult.TestRule.FailMessage.ReplacementText, parameters);
+                if (!string.IsNullOrWhiteSpace(filledTemplateResult.ProcessedText))
+                {
+                    failureMessages.Add($"<p>{filledTemplateResult.ProcessedText}</p>");
+                }
+            }
+
+            // Recurse into all sub-tests to find other failures.
+            foreach (var subResult in testResult.SubTestResults)
+            {
+                BuildRejectionBody(subResult, failureMessages, namedTests, parameters);
+            }
+        }
+
     }
 }
