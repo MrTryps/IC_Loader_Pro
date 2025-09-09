@@ -194,42 +194,207 @@ namespace IC_Loader_Pro.Services
         //    }
         //}
 
+        // --  the latest replaced code
+        //private Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        //{
+        //    const string methodName = "GetFolderFromPath";
+        //    Outlook.Store targetStore = null;
+        //    Outlook.MAPIFolder startFolder = null;
+        //    Outlook.MAPIFolder currentFolder = null;
+
+        //    try
+        //    {
+        //        targetStore = mapiNamespace.Stores.Cast<Outlook.Store>()
+        //            .FirstOrDefault(s => s != null && s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
+        //        if (targetStore == null)
+        //        {
+        //            Log.RecordError($"Could not find store '{storeName}'.", null, methodName);
+        //            return null;
+        //        }
+
+        //        string[] folderNames;
+        //        // If the path starts with "Inbox", our starting point is the default Inbox folder for that store.
+        //        if (folderPath.StartsWith("Inbox", StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            startFolder = targetStore.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox);
+        //            currentFolder = startFolder;
+
+        //            // We need to split the rest of the path, excluding "Inbox"
+        //            var pathParts = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        //            folderNames = pathParts.Skip(1).ToArray(); // Skip the "Inbox" part
+        //        }
+        //        else // Otherwise, start from the root of the store.
+        //        {
+        //            startFolder = targetStore.GetRootFolder();
+        //            currentFolder = startFolder;
+        //            folderNames = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        //        }
+
+        //        // Now, navigate through the subfolders
+        //        foreach (var name in folderNames)
+        //        {
+        //            Outlook.MAPIFolder nextFolder = null;
+        //            try
+        //            {
+        //                nextFolder = currentFolder.Folders[name];
+        //                if (currentFolder != startFolder) Marshal.ReleaseComObject(currentFolder);
+        //                currentFolder = nextFolder;
+        //            }
+        //            catch
+        //            {
+        //                Log.RecordError($"FAILED to find subfolder '{name}' in '{currentFolder.FolderPath}'.", null, methodName);
+        //                if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
+        //                if (currentFolder != startFolder) Marshal.ReleaseComObject(currentFolder);
+        //                Marshal.ReleaseComObject(startFolder);
+        //                return null;
+        //            }
+        //        }
+
+        //        // If we only navigated to the start folder (e.g., path was just "Inbox"), we don't release it.
+        //        // Otherwise, we release the startFolder COM object.
+        //        if (currentFolder != startFolder)
+        //        {
+        //            Marshal.ReleaseComObject(startFolder);
+        //        }
+
+        //        return currentFolder;
+        //    }
+        //    finally
+        //    {
+        //        if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+        //    }
+        //}
+
         private Outlook.MAPIFolder GetFolderFromPath(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
         {
             const string methodName = "GetFolderFromPath";
             Outlook.Store targetStore = null;
             Outlook.MAPIFolder currentFolder = null;
+
             try
             {
-                targetStore = mapiNamespace.Stores.Cast<Outlook.Store>().FirstOrDefault(s => s != null && s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+                targetStore = mapiNamespace.Stores.Cast<Outlook.Store>()
+                    .FirstOrDefault(s => s != null && s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
                 if (targetStore == null)
                 {
                     Log.RecordError($"Could not find store '{storeName}'.", null, methodName);
                     return null;
                 }
 
+                // Start the search from the root of the specified store.
                 currentFolder = targetStore.GetRootFolder();
-                // This split now correctly removes empty entries that occur from leading backslashes.
+
+                // Split the folder path into its components.
                 var folderNames = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
 
+                // Navigate through the folder hierarchy one level at a time.
                 foreach (var name in folderNames)
                 {
                     Outlook.MAPIFolder nextFolder = null;
                     try
                     {
                         nextFolder = currentFolder.Folders[name];
-                        Marshal.ReleaseComObject(currentFolder);
+                        // Release the previous folder's COM object before moving to the next one.
+                        if (currentFolder != null) Marshal.ReleaseComObject(currentFolder);
                         currentFolder = nextFolder;
                     }
                     catch
                     {
-                        Log.RecordError($"FAILED to find subfolder '{name}' in '{currentFolder.FolderPath}'.", null, methodName);
+                        Log.RecordError($"FAILED to find subfolder '{name}' in '{currentFolder?.FolderPath ?? "Unknown Parent"}'.", null, methodName);
                         if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
-                        Marshal.ReleaseComObject(currentFolder);
+                        if (currentFolder != null) Marshal.ReleaseComObject(currentFolder);
                         return null;
                     }
                 }
                 return currentFolder;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"An unexpected error occurred while finding folder path '{folderPath}' in store '{storeName}'.", ex, methodName);
+                return null;
+            }
+            finally
+            {
+                if (targetStore != null) Marshal.ReleaseComObject(targetStore);
+            }
+        }
+
+
+
+
+
+
+        private Outlook.MAPIFolder GetFolderFromPath_old(Outlook.NameSpace mapiNamespace, string storeName, string folderPath)
+        {
+            const string methodName = "GetFolderFromPath";
+            Outlook.Store targetStore = null;
+            Outlook.MAPIFolder currentFolder = null;
+
+            try
+            {
+                targetStore = mapiNamespace.Stores.Cast<Outlook.Store>()
+                    .FirstOrDefault(s => s != null && s.DisplayName.Equals(storeName, StringComparison.OrdinalIgnoreCase));
+
+                if (targetStore == null)
+                {
+                    Log.RecordError($"Could not find store '{storeName}'.", null, methodName);
+                    return null;
+                }
+
+                // --- START OF DIAGNOSTIC LOGIC ---
+                // Get the Inbox and log the names of all its subfolders.
+                Outlook.MAPIFolder inbox = null;
+                try
+                {
+                    inbox = targetStore.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderInbox);
+                    if (inbox != null)
+                    {
+                        Log.RecordMessage($"Diagnostic: Found {inbox.Folders.Count} subfolders inside the folder '{inbox.Name}' in store '{storeName}'.", BIS_Log.BisLogMessageType.Note);
+                        var folderNames = new List<string>();
+                        foreach (Outlook.MAPIFolder subFolder in inbox.Folders)
+                        {
+                            folderNames.Add(subFolder.Name);
+                        }
+                        Log.RecordMessage($"Diagnostic: Folders found inside '{inbox.Name}': [ {string.Join(", ", folderNames)} ]", BIS_Log.BisLogMessageType.Note);
+                        Marshal.ReleaseComObject(inbox);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.RecordError("Diagnostic logging failed to list Inbox subfolders.", ex, methodName);
+                    if (inbox != null) Marshal.ReleaseComObject(inbox);
+                }
+                // --- END OF DIAGNOSTIC LOGIC ---
+
+                currentFolder = targetStore.GetRootFolder();
+
+                var folderNamesToNavigate = folderPath.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (var name in folderNamesToNavigate)
+                {
+                    Outlook.MAPIFolder nextFolder = null;
+                    try
+                    {
+                        nextFolder = currentFolder.Folders[name];
+                        if (currentFolder != null) Marshal.ReleaseComObject(currentFolder);
+                        currentFolder = nextFolder;
+                    }
+                    catch
+                    {
+                        Log.RecordError($"FAILED to find subfolder '{name}' in '{currentFolder?.FolderPath ?? "Unknown Parent"}'.", null, methodName);
+                        if (nextFolder != null) Marshal.ReleaseComObject(nextFolder);
+                        if (currentFolder != null) Marshal.ReleaseComObject(currentFolder);
+                        return null;
+                    }
+                }
+                return currentFolder;
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"An unexpected error occurred while finding folder path '{folderPath}' in store '{storeName}'.", ex, methodName);
+                return null;
             }
             finally
             {

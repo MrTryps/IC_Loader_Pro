@@ -30,7 +30,7 @@ namespace IC_Loader_Pro.ViewModels
             Subject = string.IsNullOrWhiteSpace(subject) ? "[No Subject]" : subject;
             AttachmentFileNames = attachmentNames; // Set the property
 
-            AvailableEmailTypes = Enum.GetValues(typeof(EmailType))
+            AvailableEmailTypes = Enum.GetValues(typeof(BIS_Tools_DataModels_2025.EmailType))
                                       .Cast<EmailType>()
                                       .Where(e => e == EmailType.CEA || e == EmailType.DNA || e == EmailType.WRS)
                                       .ToList();

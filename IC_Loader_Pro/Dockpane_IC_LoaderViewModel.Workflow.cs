@@ -258,66 +258,112 @@ namespace IC_Loader_Pro
                 _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
                 _currentFilesetTestResults = processingResult.FilesetTestResults;
 
-                switch (_currentEmailTestResult.CumulativeAction.ResultAction)
+                if (processingResult.TestResult == null)
                 {
-                    case TestActionResponse.Pass:
-                        // 1. Store all shapes in our new master list.
-                        if (processingResult.ShapeItems?.Any() == true)
-                        {
-                            _allProcessedShapes = processingResult.ShapeItems;
-                        }
-
-                        // 2. Set up the FileSetViewModels and their default values.
-                        if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
-                        {
-                            await RunOnUIThread(() =>
-                            {
-                                foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
-                                {
-                                    var fsVM = new FileSetViewModel(fs);
-                                    // Set default "UseFilter" state: true for DWG, false for shapefiles.
-                                    fsVM.UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase);
-                                    _foundFileSets.Add(fsVM);
-                                }
-                            });
-                        }
-
-                        // 3. Calculate and populate the counts for each fileset.
-                        UpdateFileSetCounts();
-
-                        //var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
-                        //foreach (var group in shapesByFile)
-                        //{
-                        //    var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
-                        //    if (fileSetVM != null)
-                        //    {
-                        //        fileSetVM.TotalFeatureCount = group.Count();
-                        //        fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
-                        //        fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
-                        //        fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
-                        //    }
-                        //}
-
-                        // 4. Call our new central refresh method. This single call now handles
-                        //    populating the UI lists and redrawing the map based on the checkbox states.
-                        await RefreshShapeListsAndMap();
-                        await ZoomToAllAndSiteAsync();
-
-                        // 5. Set the final UI state.
-                        StatusMessage = "Ready for review.";
-                        IsEmailActionEnabled = true;
-                        break;
-
-                    case TestActionResponse.Note:
-                    case TestActionResponse.Manual:
-                    case TestActionResponse.Fail:
-                    default:
-                        // Any non-passing result will auto-advance to the next email
-                        shouldAutoAdvance = true;
-                        UpdateQueueStats(_currentEmailTestResult); // Update stats based on failure type
-                        ShowTestResultWindow(_currentEmailTestResult);
-                        return;
+                    shouldAutoAdvance = true;
+                    return;
                 }
+
+                // If the result did not pass validation, show the results window and enable the
+                // action buttons so the user can make a manual decision.
+                if (_currentEmailTestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
+                {
+                    ShowTestResultWindow(_currentEmailTestResult);
+                    StatusMessage = $"Review required: {_currentEmailTestResult.Comments.FirstOrDefault()}";
+                    IsEmailActionEnabled = true; // Enable Save/Skip/Reject buttons
+                    return; // Stop processing and wait for the user to click a button
+                }
+
+                // If we reach here, the result was a clean Pass, so we load the UI for review.
+                if (processingResult.ShapeItems?.Any() == true)
+                {
+                    _allProcessedShapes = processingResult.ShapeItems;
+                }
+
+                if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
+                {
+                    await RunOnUIThread(() =>
+                    {
+                        foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                        {
+                            var fsVM = new FileSetViewModel(fs)
+                            {
+                                UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase)
+                            };
+                            _foundFileSets.Add(fsVM);
+                        }
+                    });
+                }
+
+                UpdateFileSetCounts();
+                await RefreshShapeListsAndMap();
+                await ZoomToAllAndSiteAsync();
+
+                StatusMessage = "Ready for review.";
+                IsEmailActionEnabled = true;
+
+
+
+                //switch (_currentEmailTestResult.CumulativeAction.ResultAction)
+                //{
+                //    case TestActionResponse.Pass:
+                //        // 1. Store all shapes in our new master list.
+                //        if (processingResult.ShapeItems?.Any() == true)
+                //        {
+                //            _allProcessedShapes = processingResult.ShapeItems;
+                //        }
+
+                //        // 2. Set up the FileSetViewModels and their default values.
+                //        if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
+                //        {
+                //            await RunOnUIThread(() =>
+                //            {
+                //                foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                //                {
+                //                    var fsVM = new FileSetViewModel(fs);
+                //                    // Set default "UseFilter" state: true for DWG, false for shapefiles.
+                //                    fsVM.UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase);
+                //                    _foundFileSets.Add(fsVM);
+                //                }
+                //            });
+                //        }
+
+                //        // 3. Calculate and populate the counts for each fileset.
+                //        UpdateFileSetCounts();
+
+                //        //var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
+                //        //foreach (var group in shapesByFile)
+                //        //{
+                //        //    var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
+                //        //    if (fileSetVM != null)
+                //        //    {
+                //        //        fileSetVM.TotalFeatureCount = group.Count();
+                //        //        fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
+                //        //        fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
+                //        //        fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
+                //        //    }
+                //        //}
+
+                //        // 4. Call our new central refresh method. This single call now handles
+                //        //    populating the UI lists and redrawing the map based on the checkbox states.
+                //        await RefreshShapeListsAndMap();
+                //        await ZoomToAllAndSiteAsync();
+
+                //        // 5. Set the final UI state.
+                //        StatusMessage = "Ready for review.";
+                //        IsEmailActionEnabled = true;
+                //        break;
+
+                //    case TestActionResponse.Note:
+                //    case TestActionResponse.Manual:
+                //    case TestActionResponse.Fail:
+                //    default:
+                //        // Any non-passing result will auto-advance to the next email
+                //        shouldAutoAdvance = true;
+                //        UpdateQueueStats(_currentEmailTestResult); // Update stats based on failure type
+                //        ShowTestResultWindow(_currentEmailTestResult);
+                //        return;
+                //}
             }
             catch (Exception ex)
             {

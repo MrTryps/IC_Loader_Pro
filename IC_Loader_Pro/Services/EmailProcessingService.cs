@@ -85,40 +85,33 @@ namespace IC_Loader_Pro.Services
 
             var outlookService = new OutlookService();
 
-            // 1. Handle Spam and Auto-Replies
-            if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse)
+            // 1. Handle Spam, Auto-Replies, and Mismatched IC Types
+            if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse || (finalType.Name != selectedIcType && !wasManuallyClassified))
             {
-                string fullDestPath = finalType == EmailType.Spam ?
-                currentIcSetting.OutlookSpamFolderPath :
-                currentIcSetting.OutlookCorrespondenceFolderPath;
+                string moveReason;
+                string fullDestPath;
 
-                string moveReason = $"Email identified as {finalType.Name}.";
-                NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, fullDestPath, moveReason, emailToProcess.Subject);
-           //     var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
-           //     bool moveSucceeded = outlookService.MoveEmailToFolder(
-           //outlookApp,
-           //emailToProcess.Emailid,
-           //sourceFolderPath,
-           //sourceStoreName,
-           //destFolder);
-                rootTestResult.Passed = false;
-                return new EmailProcessingResult { TestResult = rootTestResult };
-            }
-
-            // 2. Handle Mismatched IC Types
-            if (finalType.Name != selectedIcType)
-            {
-                var correctIcSetting = _rules.ReturnIcGisTypeSettings(finalType.Name);
-                if (correctIcSetting != null)
+                if (finalType.Name != selectedIcType && !wasManuallyClassified)
                 {
-                    string reason = $"Email type '{finalType.Name}' does not match the selected queue '{selectedIcType}'.";
-                    NotifyAndMoveEmail(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath, reason, emailToProcess.Subject);
-
-
-                    // outlookService.MoveEmailToFolder(outlookApp, emailToProcess.Emailid, sourceFolderPath, sourceStoreName, correctIcSetting.OutlookInboxFolderPath);
+                    var correctIcSetting = _rules.ReturnIcGisTypeSettings(finalType.Name);
+                    moveReason = $"Email type '{finalType.Name}' does not match the selected queue '{selectedIcType}'.";
+                    fullDestPath = correctIcSetting?.OutlookInboxFolderPath;
                 }
-                rootTestResult.Passed = false;
-                return new EmailProcessingResult { TestResult = rootTestResult };
+                else
+                {
+                    moveReason = $"Email identified as {finalType.Name}.";
+                    fullDestPath = finalType == EmailType.Spam ?
+                        currentIcSetting.OutlookSpamFolderPath :
+                        currentIcSetting.OutlookCorrespondenceFolderPath;
+                }
+
+                if (!string.IsNullOrEmpty(fullDestPath))
+                {
+                    NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, fullDestPath, moveReason);
+                }
+
+                // Return a result with a null TestResult to signal an automatic advance.
+                return new EmailProcessingResult { TestResult = null };
             }
 
             // 3. Process Attachments
@@ -179,7 +172,31 @@ namespace IC_Loader_Pro.Services
                 FilesetTestResults = filesetTestResults
             };
         }
+        /// <summary>
+        /// Displays a notification to the user and then moves an email to a specified folder.
+        /// </summary>
+        private void NotifyAndMoveEmail(Outlook.Application outlookApp, EmailItem email, string sourceFolderPath, string sourceStoreName, string fullDestPath, string reason)
+        {
+            var (destStore, destFolder) = OutlookService.ParseOutlookPath(fullDestPath);
 
+            // Show the notification to the user
+            string message = $"The following email will be automatically moved:\n\n" +
+                             $"Subject: {email.Subject}\n" +
+                             $"Reason: {reason}\n" +
+                             $"Destination: {destFolder}";
+
+            ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(message, "Automated Email Move", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+
+            string fullSourcePath = $"\\\\{sourceStoreName}\\{sourceFolderPath}";
+
+            // Move the email
+            _outlookService.MoveEmailToFolder(
+                outlookApp,
+                email.Emailid,
+                fullSourcePath,
+                fullDestPath
+            );
+        }
 
         // In Services/EmailProcessingService.cs
 
