@@ -1,4 +1,5 @@
 ﻿using IC_Loader_Pro.Models;
+using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -463,7 +464,22 @@ namespace IC_Loader_Pro.Services
                     Log.RecordMessage($"    Subject line: {foundMailItem.Subject}", BisLogMessageType.Note);
                     Log.RecordMessage($"    Sender: {foundMailItem.SenderEmailAddress}", BisLogMessageType.Note);
                     Log.RecordMessage($"    Sent date: {foundMailItem.SentOn}", BisLogMessageType.Note);
-                    result = MapToEmailItem(foundMailItem);
+                    try
+                    {
+                        result = MapToEmailItem(foundMailItem);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex.Message == "Duplicate filenames found in attachments.")
+                        {
+                            // If this specific error occurs, create a placeholder EmailItem to carry the error forward.
+                            result = new EmailItem { Emailid = messageId, Body = "DUPLICATE_FILENAMES_ERROR" };
+                        }
+                        else
+                        {
+                            throw; // Re-throw any other unexpected errors.
+                        }
+                    }
                 }
                 else
                 {
@@ -589,14 +605,12 @@ namespace IC_Loader_Pro.Services
         {
             if (attachments == null || attachments.Count == 0) return;
 
-            // Create a unique temporary folder for this email's attachments.
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string addinTempRoot = Path.Combine(localAppData, "IC_Loader_Pro_Temp");
             Directory.CreateDirectory(addinTempRoot);
             string tempFolderPath = Path.Combine(addinTempRoot, Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempFolderPath);
 
-            // Store the path so we can access it later for processing and cleanup.
             emailItem.TempFolderPath = tempFolderPath;
             Log.RecordMessage($"Created temporary folder for email attachments: {tempFolderPath}", BisLogMessageType.Note);
 
@@ -604,16 +618,28 @@ namespace IC_Loader_Pro.Services
             {
                 try
                 {
-                    // Note: We can add the sanitize logic from BisFileTools here if needed,
-                    // or just save with the original name for now.
-                    string savedPath = Path.Combine(tempFolderPath, attachment.FileName);
-                    attachment.SaveAsFile(savedPath);
+                    string originalFileName = attachment.FileName;
+                    string sanitizedFileName = Module1.FileTool.SanitizeFileName(originalFileName);
+                    string fullPath = Path.Combine(tempFolderPath, sanitizedFileName);
+                    string baseName = Path.GetFileNameWithoutExtension(sanitizedFileName);
+                    string extension = Path.GetExtension(sanitizedFileName);
+                    int count = 1;
 
-                    // Add the saved attachment info to our custom EmailItem.
+                    // Safely rename the file on disk if a duplicate exists
+                    while (File.Exists(fullPath))
+                    {
+                        string newFileName = $"{baseName} ({count++}){extension}";
+                        fullPath = Path.Combine(tempFolderPath, newFileName);
+                    }
+
+                    attachment.SaveAsFile(fullPath);
+
+                    // Add the attachment info, tracking both the original and final names
                     emailItem.Attachments.Add(new EmailItem.AttachmentItem
                     {
-                        FileName = attachment.FileName,
-                        SavedPath = savedPath
+                        OriginalFileName = originalFileName,
+                        FileName = Path.GetFileName(fullPath),
+                        SavedPath = fullPath
                     });
                 }
                 catch (Exception ex)
@@ -622,7 +648,6 @@ namespace IC_Loader_Pro.Services
                 }
                 finally
                 {
-                    // Release the individual attachment COM object.
                     Marshal.ReleaseComObject(attachment);
                 }
             }

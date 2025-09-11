@@ -43,34 +43,35 @@ namespace IC_Loader_Pro.Services
         /// hierarchical test result for saving and reporting.
         /// </summary>
         /// <param name="initialDeliverableResult">The root test result for the email/deliverable level.</param>
-        /// <param name="filesetTestResults">The separate list of all test results related to filesets.</param>
         /// <param name="approvedShapes">The final list of shapes the user approved for saving.</param>
         /// <param name="deliverableId">The new, permanent deliverable ID.</param>
         /// <param name="icType">The IC Type of the submission.</param>
         /// <param name="prefId">The final Pref ID for the submission.</param>
         /// <returns>A single, final IcTestResult object.</returns>
         public IcTestResult CompileFinalResults(
-            IcTestResult initialDeliverableResult,
-            List<IcTestResult> filesetTestResults,
-            ICollection<ShapeItem> approvedShapes,
-            string deliverableId,
-            string icType,
-            string prefId)
+             IcTestResult initialDeliverableResult,
+             ICollection<ShapeItem> approvedShapes,
+             string deliverableId,
+             string icType,
+             string prefId)
         {
             var namedTests = new IcNamedTests(Log, PostGreTool);
 
             // 1. Create the final root test result that will contain everything.
             var finalResult = namedTests.returnNewTestResult("GIS_Deliverable_Root", deliverableId, TestType.Deliverable);
 
-            // 2. Create a container for all the submission-level (fileset) test results.
+            // 2. Create a container for all the submission-level test results.
             var submissionContainerResult = namedTests.returnNewTestResult("GIS_CompiledSubResults", deliverableId, TestType.Deliverable);
 
-            // 3. Add all the fileset-specific tests from the list we passed in.
-            if (filesetTestResults != null)
+            // 3. Find all the fileset-specific tests from the children of the initial result.
+            if (initialDeliverableResult?.SubTestResults != null)
             {
-                foreach (var filesetTest in filesetTestResults)
+                foreach (var childTest in initialDeliverableResult.SubTestResults)
                 {
-                    submissionContainerResult.AddSubordinateTestResult(filesetTest);
+                    if (childTest.ResultType == TestType.Submission)
+                    {
+                        submissionContainerResult.AddSubordinateTestResult(childTest);
+                    }
                 }
             }
 

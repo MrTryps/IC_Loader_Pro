@@ -377,8 +377,7 @@ namespace IC_Loader_Pro
             // the new block - may need to remove
             var testResultService = new Services.TestResultService();
             var finalTestResult = testResultService.CompileFinalResults(
-                _currentEmailTestResult,
-                _currentFilesetTestResults,
+                _currentEmailTestResult,                
                 _selectedShapes,
                 "TEMP_SAVE_ID", // This will be updated by the finalizer
                 SelectedIcType.Name,
@@ -504,8 +503,7 @@ namespace IC_Loader_Pro
             // 1. Compile the complete set of test results that were generated during processing.
             var testResultService = new Services.TestResultService();
             var finalTestResult = testResultService.CompileFinalResults(
-                _currentEmailTestResult,
-                _currentFilesetTestResults,
+                _currentEmailTestResult,                
                 _selectedShapes,
                 "TEMP_REJECT_ID", // Temporary ID, will be updated by the finalizer
                 SelectedIcType.Name,

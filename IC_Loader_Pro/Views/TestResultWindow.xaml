@@ -3,19 +3,44 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:localConverters="clr-namespace:IC_Loader_Pro.ValueConverters"
+        xmlns:viewModels="clr-namespace:IC_Loader_Pro.ViewModels"
+        xmlns:converters="clr-namespace:IC_Loader_Pro.ValueConverters"
+        xmlns:local="clr-namespace:BIS_Tools_DataModels_2025;assembly=BIS_Tools_DataModels_2025"
         mc:Ignorable="d"
         Title="Test Results" Height="450" Width="600"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <converters:TestActionToBrushConverter x:Key="ActionToBrushConverter" />
+        <converters:TestActionToBackgroundBrushConverter x:Key="ActionToBackgroundConverter" />
+    </Window.Resources>
+
     <Grid Margin="10">
-        <TreeView ItemsSource="{Binding RootResult}">
+        <TreeView ItemsSource="{Binding RootResult}" 
+                  Background="{Binding RootResult[0].FinalAction, Converter={StaticResource ActionToBackgroundConverter}}">
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem">
+                    <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                </Style>
+            </TreeView.ItemContainerStyle>
             <TreeView.ItemTemplate>
                 <HierarchicalDataTemplate ItemsSource="{Binding SubResults}">
                     <StackPanel Orientation="Horizontal">
+                        <StackPanel.ToolTip>
+                            <ToolTip>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Passed, StringFormat='Passed: {0}'}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding FinalAction, StringFormat='Cumulative Action: {0}'}" />
+                                </StackPanel>
+                            </ToolTip>
+                        </StackPanel.ToolTip>
                         <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,5,0"/>
-                        <TextBlock Text="{Binding TestName}" FontWeight="Bold"/>
-                        <TextBlock Text=": "/>
-                        <TextBlock Text="{Binding Comments}" TextTrimming="CharacterEllipsis"/>
+
+                        <TextBlock Text="{Binding TestName}" FontWeight="Bold"
+                                   Foreground="{Binding FinalAction, Converter={StaticResource ActionToBrushConverter}}"/>
+                        <TextBlock Text=": " 
+                                   Foreground="{Binding FinalAction, Converter={StaticResource ActionToBrushConverter}}"/>
+                        <TextBlock Text="{Binding Comments}" TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding FinalAction, Converter={StaticResource ActionToBrushConverter}}"/>
                     </StackPanel>
                 </HierarchicalDataTemplate>
             </TreeView.ItemTemplate>

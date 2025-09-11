@@ -221,6 +221,50 @@ namespace IC_Loader_Pro
                 emailToProcess = await QueuedTask.Run(() => new OutlookService().GetEmailById(outlookApp, folderPath, currentEmailSummary.Emailid, storeName));
                 _currentEmail = emailToProcess;
 
+                // --- START OF NEW DUPLICATE FILENAME CHECK ---
+                //if (emailToProcess != null && emailToProcess.Attachments.Any())
+                //{
+                //    // Find any original filenames that appear more than once.
+                //    var duplicateOriginalFilenames = emailToProcess.Attachments
+                //                               .GroupBy(a => a.OriginalFileName, StringComparer.OrdinalIgnoreCase)
+                //                               .Where(g => g.Count() > 1)
+                //                               .Select(g => g.Key)
+                //                               .ToList();
+
+                //    if (duplicateOriginalFilenames.Any())
+                //    {
+                //        var multiFileDuplicates = new List<string>();
+
+                //        // For each duplicate, check if it belongs to a multi-file dataset.
+                //        foreach (var dupName in duplicateOriginalFilenames)
+                //        {
+                //            var rule = IcRules.ReturnFilesetRuleForExtension(Path.GetExtension(dupName).TrimStart('.'));
+                //            if (rule != null && rule.RequiredExtensions.Count > 1)
+                //            {
+                //                multiFileDuplicates.Add(dupName);
+                //            }
+                //        }
+
+                //        if (multiFileDuplicates.Any())
+                //        {
+                //            _currentEmailTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
+
+                //            var duplicateTest = namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
+                //            duplicateTest.Passed = false;
+                //            duplicateTest.AddComment($"The submission could not be processed because it contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}");
+
+                //            _currentEmailTestResult.AddSubordinateTestResult(duplicateTest);
+
+                //            ShowTestResultWindow(_currentEmailTestResult);
+                //            StatusMessage = "Processing failed: Duplicate filenames found in attachments.";
+                //            IsEmailActionEnabled = true; // Allow user to Reject/Skip
+                //            UpdateEmailInfo(emailToProcess, new EmailClassificationResult(), false, EmailType.Unknown);
+                //            return; // Stop processing this email
+                //        }
+                //    }
+                //}
+                // --- END OF NEW DUPLICATE FILENAME CHECK ---
+
                 if (emailToProcess == null)
                 {
                     shouldAutoAdvance = true; // Mark for advancement
@@ -256,7 +300,7 @@ namespace IC_Loader_Pro
 
                 _currentEmailTestResult = processingResult.TestResult;
                 _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
-                _currentFilesetTestResults = processingResult.FilesetTestResults;
+               // _currentFilesetTestResults = processingResult.FilesetTestResults;
 
                 if (processingResult.TestResult == null)
                 {

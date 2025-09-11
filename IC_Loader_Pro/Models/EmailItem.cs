@@ -75,6 +75,11 @@ namespace IC_Loader_Pro.Models
             /// <summary>
             /// The original filename of the attachment (e.g., "MySite.shp").
             /// </summary>
+            public string OriginalFileName { get; set; }
+
+            /// <summary>
+            /// The original filename of the attachment (e.g., "MySite.shp").
+            /// </summary>
             public string FileName { get; set; }
 
             /// <summary>
@@ -87,5 +92,11 @@ namespace IC_Loader_Pro.Models
         /// The full path to the temporary directory where attachments for this email are stored.
         /// </summary>
         public string TempFolderPath { get; set; }
+
+        /// <summary>
+        /// A property to hold a critical processing error that prevents further analysis,
+        /// such as the presence of duplicate attachment filenames.
+        /// </summary>
+        public string ProcessingError { get; set; }
     }
 }

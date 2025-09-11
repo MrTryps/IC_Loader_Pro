@@ -174,22 +174,29 @@ namespace IC_Loader_Pro.Services
         //         FilesetTestResults = filesetTestResults
         //     };
         // }
- 
+
 
         public async Task<EmailProcessingResult> ProcessEmailAsync(
-       Outlook.Application outlookApp,
-       EmailItem emailToProcess,
-       EmailClassificationResult classification,
-       string selectedIcType,
-       string sourceFolderPath,
-       string sourceStoreName,
-       bool wasManuallyClassified,
-       EmailType finalType,
-       Func<string, Task<MapPoint>> getSiteCoordsTask)
+         Outlook.Application outlookApp,
+         EmailItem emailToProcess,
+         EmailClassificationResult classification,
+         string selectedIcType,
+         string sourceFolderPath,
+         string sourceStoreName,
+         bool wasManuallyClassified,
+         EmailType finalType,
+         Func<string, Task<MapPoint>> getSiteCoordsTask)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+            // --- START OF NEW DUPLICATE FILENAME CHECK ---
+            if (!string.IsNullOrEmpty(emailToProcess.ProcessingError))
+            {
+                var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
+                duplicateTest.SetResult(false, emailToProcess.ProcessingError);
+                rootTestResult.AddSubordinateTestResult(duplicateTest);
+            }
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
             AttachmentAnalysisResult attachmentAnalysis = null;
 
@@ -241,7 +248,7 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = null };
             }
 
-            // Process Attachments
+            // Process Attachments and add their results directly to the main tree
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
             attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
             rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
@@ -269,6 +276,7 @@ namespace IC_Loader_Pro.Services
                 return new EmailProcessingResult { TestResult = null, AttachmentAnalysis = attachmentAnalysis };
             }
 
+            // Process Features and add their results directly to the main tree
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
             var featureProcessingContainerTest = _namedTests.returnNewTestResult("GIS_SubmissionFileCheck", emailToProcess.Emailid, IcTestResult.TestType.Submission);
             List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, featureProcessingContainerTest);
