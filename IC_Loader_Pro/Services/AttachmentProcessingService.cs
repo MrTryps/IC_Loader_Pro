@@ -116,33 +116,6 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                var fileNames = Directory.GetFiles(folderToSearch).Select(Path.GetFileName).ToList();
-                var duplicateFiles = fileNames.GroupBy(f => f, StringComparer.OrdinalIgnoreCase)
-                                              .Where(g => g.Count() > 1)
-                                              .Select(g => g.Key)
-                                              .ToList();
-
-                if (duplicateFiles.Any())
-                {
-                    var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", "", IcTestResult.TestType.Deliverable);
-                    duplicateTest.Passed = false;
-                    duplicateTest.AddComment($"Duplicate filenames found: {string.Join(", ", duplicateFiles)}");
-                    analysisResult.TestResult.AddSubordinateTestResult(duplicateTest);
-                    analysisResult.TestResult.Passed = false;
-                    return analysisResult; // Stop processing immediately
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError("An error occurred during the duplicate filename check.", ex, methodName);
-                analysisResult.TestResult.Passed = false;
-                analysisResult.TestResult.AddComment("A critical error occurred while checking for duplicate filenames.");
-                return analysisResult;
-            }
-            // --- END OF NEW DUPLICATE FILENAME CHECK ---
-
-            try
-            {
                 // Step 1: Unzip any archive files.
                 var unzipService = new UnzipService(_log);
                 var unzippedFilesInfo = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
@@ -176,7 +149,7 @@ namespace IC_Loader_Pro.Services
                 }
                 analysisResult.IdentifiedFileSets = allIdentifiedFileSets;
 
-                foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validFileSet))
+                foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
                 {
                     var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false;

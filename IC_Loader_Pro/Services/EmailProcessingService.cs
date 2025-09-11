@@ -190,15 +190,45 @@ namespace IC_Loader_Pro.Services
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
-            // --- START OF NEW DUPLICATE FILENAME CHECK ---
-            if (!string.IsNullOrEmpty(emailToProcess.ProcessingError))
-            {
-                var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
-                duplicateTest.SetResult(false, emailToProcess.ProcessingError);
-                rootTestResult.AddSubordinateTestResult(duplicateTest);
-            }
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
             AttachmentAnalysisResult attachmentAnalysis = null;
+
+            // --- START OF MODIFIED LOGIC ---
+            // This flag will track if we found a critical attachment error.
+            bool hasAttachmentError = false;
+
+
+            // 1. Perform the duplicate filename check first.
+            if (emailToProcess != null && emailToProcess.Attachments.Any())
+            {
+                var duplicateOriginalFilenames = emailToProcess.Attachments
+                                                   .GroupBy(a => a.OriginalFileName, StringComparer.OrdinalIgnoreCase)
+                                                   .Where(g => g.Count() > 1)
+                                                   .Select(g => g.Key)
+                                                   .ToList();
+
+                if (duplicateOriginalFilenames.Any())
+                {
+                    var multiFileDuplicates = new List<string>();
+                    foreach (var dupName in duplicateOriginalFilenames)
+                    {
+                        var rule = _rules.ReturnFilesetRuleForExtension(Path.GetExtension(dupName).TrimStart('.'));
+                        if (rule != null && rule.RequiredExtensions.Count > 1)
+                        {
+                            multiFileDuplicates.Add(dupName);
+                        }
+                    }
+
+                    if (multiFileDuplicates.Any())
+                    {
+                        var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
+                        duplicateTest.Passed = false;
+                        duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}");
+                        rootTestResult.AddSubordinateTestResult(duplicateTest);
+                        hasAttachmentError = true; // Set the flag
+                    }
+                }
+            }
 
             if (currentIcSetting == null)
             {
@@ -218,6 +248,11 @@ namespace IC_Loader_Pro.Services
 
             var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, getSiteCoordsTask);
             rootTestResult.AddSubordinateTestResult(prefIdTest);
+
+            if (hasAttachmentError)
+            {
+                return new EmailProcessingResult { TestResult = rootTestResult };
+            }
 
             var outlookService = new OutlookService();
 
