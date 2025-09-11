@@ -189,7 +189,155 @@ namespace IC_Loader_Pro
         /// <summary>
         /// Kicks off the processing for the currently selected IC queue.
         /// </summary>
+        /// 
         private async Task ProcessSelectedQueueAsync()
+        {
+            // --- 1. Initial UI and Configuration Setup ---
+            await PerformCleanupAsync();
+            await ClearManuallyLoadedLayersAsync();
+            IsEmailActionEnabled = false;
+            _foundFileSets.Clear();
+            _allProcessedShapes.Clear();
+
+            if (SelectedIcType == null || !_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
+            {
+                CurrentEmailSubject = "Queue is empty.";
+                StatusMessage = $"Queue '{SelectedIcType?.Name}' is empty.";
+                return;
+            }
+
+            Outlook.Application outlookApp = null;
+            var namedTests = new IcNamedTests(Log, PostGreTool);
+            var currentEmailSummary = emailsToProcess.First();
+            EmailItem emailToProcess = null;
+
+            bool shouldAutoAdvance = false;
+
+            try
+            {
+                outlookApp = new Outlook.Application();
+                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
+
+                emailToProcess = await QueuedTask.Run(() => new OutlookService().GetEmailById(outlookApp, folderPath, currentEmailSummary.Emailid, storeName));
+                _currentEmail = emailToProcess;
+
+                if (emailToProcess == null)
+                {
+                    shouldAutoAdvance = true;
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not retrieve the email: '{currentEmailSummary.Subject}'. It will be skipped.", "Email Retrieval Error");
+                    return;
+                }
+
+                var classification = new EmailClassifierService(IcRules, Log).ClassifyEmail(emailToProcess);
+                _currentClassification = classification;
+
+                EmailType finalEmailType = classification.Type;
+                if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
+                {
+                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess);
+                    if (wasSelected)
+                    {
+                        finalEmailType = selectedType;
+                        classification.WasManuallyClassified = true;
+                    }
+                    else
+                    {
+                        shouldAutoAdvance = true;
+                        return;
+                    }
+                }
+
+                UpdateEmailInfo(emailToProcess, classification, classification.WasManuallyClassified, finalEmailType);
+
+                _currentSiteLocation = await GetSiteCoordinatesFromNjemsAsync(CurrentPrefId);
+
+                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
+                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesFromPostgreAsync);
+
+                _currentEmailTestResult = processingResult.TestResult;
+                _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
+
+                if (processingResult.TestResult == null)
+                {
+                    shouldAutoAdvance = true;
+                    return;
+                }
+
+                // --- START OF MODIFIED LOGIC ---
+                // 1. Populate ALL UI grids and lists first, regardless of the outcome.
+                if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
+                {
+                    await RunOnUIThread(() =>
+                    {
+                        foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
+                        {
+                            var fsVM = new FileSetViewModel(fs)
+                            {
+                                UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase)
+                            };
+                            _foundFileSets.Add(fsVM);
+                        }
+                    });
+                }
+
+                if (processingResult.ShapeItems?.Any() == true)
+                {
+                    _allProcessedShapes = processingResult.ShapeItems;
+                }
+                UpdateFileSetCounts();
+                await RefreshShapeListsAndMap();
+                await ZoomToAllAndSiteAsync();
+
+                // 2. Now, check the final result and decide the next step.
+                if (_currentEmailTestResult.CumulativeAction.ResultAction == TestActionResponse.Pass)
+                {
+                    StatusMessage = "Ready for review.";
+                    IsEmailActionEnabled = true;
+                }
+                else
+                {
+                    // For any other result, show the results window and enable the action buttons.
+                    ShowTestResultWindow(_currentEmailTestResult);
+                    StatusMessage = $"Review required: {_currentEmailTestResult.Comments.FirstOrDefault()}";
+                    IsEmailActionEnabled = true;
+                }
+                // --- END OF MODIFIED LOGIC ---
+            }
+            catch (Exception ex)
+            {
+                shouldAutoAdvance = true;
+                Log.RecordError($"An unexpected error occurred while processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An unexpected error occurred. The application will advance to the next email.", "Processing Error");
+            }
+            finally
+            {
+                if (emailToProcess != null)
+                {
+                    _pathForNextCleanup = emailToProcess.TempFolderPath;
+                }
+                if (SelectedIcType != null)
+                {
+                    SelectedIcType.EmailCount = emailsToProcess.Count;
+                }
+
+                if (outlookApp != null)
+                {
+                    Marshal.ReleaseComObject(outlookApp);
+                }
+
+                if (shouldAutoAdvance)
+                {
+                    SelectedIcType.FailedCount++;
+                    if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
+                    {
+                        emailsToProcess.RemoveAt(0);
+                    }
+                    await ProcessNextEmail();
+                }
+            }
+        }
+
+        private async Task ProcessSelectedQueueAsync_bak()
         {
             // --- 1. Initial UI and Configuration Setup ---
             await PerformCleanupAsync();
