@@ -142,16 +142,16 @@ namespace IC_Loader_Pro.Services
 
                 // Step 2: Identify logical GIS filesets by searching the root folder and all unzipped sub-folders.
                 var allIdentifiedFileSets = new List<BIS_Tools_DataModels_2025.fileset>();
-                allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory(folderToSearch, icType, false));
+                allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(folderToSearch, icType, false));
                 foreach (var unzippedInfo in unzippedFilesInfo)
                 {
-                    allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory(unzippedInfo.ExtractionPath, icType, false));
+                    allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(unzippedInfo.ExtractionPath, icType, false));
                 }
                 analysisResult.IdentifiedFileSets = allIdentifiedFileSets;
 
                 foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
                 {
-                    var incompleteTest = _namedTests.returnNewTestResult(" ", fileset.fileName, IcTestResult.TestType.Submission);
+                    var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false;
                     incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
                     analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);

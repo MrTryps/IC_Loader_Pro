@@ -1204,7 +1204,7 @@ namespace IC_Loader_Pro
                 _isRefreshingShapes = true;
 
                 // Create a fileset object representing the source data
-                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory(Path.GetDirectoryName(selectedItem.Path),"",false)
+                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory_NewMethod(Path.GetDirectoryName(selectedItem.Path),"",false)
                                         .FirstOrDefault(fs => fs.fileName.Equals(Path.GetFileNameWithoutExtension(selectedItem.Name), StringComparison.OrdinalIgnoreCase));
 
                 if (sourceFileSet == null)
@@ -1309,7 +1309,7 @@ namespace IC_Loader_Pro
             {
                 _isRefreshingShapes = true;
 
-                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory(Path.GetDirectoryName(selectedFilePath), "", false)
+                var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory_NewMethod(Path.GetDirectoryName(selectedFilePath), "", false)
                                         .FirstOrDefault(fs => fs.fileName.Equals(Path.GetFileNameWithoutExtension(selectedFilePath), StringComparison.OrdinalIgnoreCase));
 
                 if (sourceFileSet == null)
