@@ -151,7 +151,7 @@ namespace IC_Loader_Pro.Services
 
                 foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
                 {
-                    var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
+                    var incompleteTest = _namedTests.returnNewTestResult(" ", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false;
                     incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
                     analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
