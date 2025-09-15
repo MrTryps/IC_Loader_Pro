@@ -201,7 +201,23 @@ namespace IC_Loader_Pro.Services
             subjectLineTest.AddComment(subjectLineTest.Passed ? "Subject line is present." : "Original subject was empty.");
             rootTestResult.AddSubordinateTestResult(subjectLineTest);
 
-            var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, getSiteCoordsTask);
+            // 1. Parse the email body EARLY to get the body Pref ID.
+            var bodyParser = new EmailBodyParserService(selectedIcType);
+            var bodyData = bodyParser.GetFieldsFromBody(emailToProcess.Body);
+
+            // Check for common variations of the key.
+            string bodyPrefId = null;
+            if (bodyData.ContainsKey("prefid"))
+            {
+                bodyPrefId = bodyData["prefid"];
+            }
+            else if (bodyData.ContainsKey("pref_id"))
+            {
+                bodyPrefId = bodyData["pref_id"];
+            }
+
+            // 2. Pass BOTH subject and body IDs to the validation method.
+            var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, bodyPrefId, getSiteCoordsTask);
             rootTestResult.AddSubordinateTestResult(prefIdTest);
 
             var outlookService = new OutlookService();
@@ -274,14 +290,6 @@ namespace IC_Loader_Pro.Services
                 ShapeItems = foundShapes
             };
         }
-
-
-
-
-
-
-
-
 
 
         /// <summary>
@@ -389,23 +397,26 @@ namespace IC_Loader_Pro.Services
         /// <param name="getSiteCoordsTask">A function that can be called to get the site coordinates.</param>
         /// <returns>A tuple containing the detailed IcTestResult and the found MapPoint.</returns>
         private async Task<(IcTestResult TestResult, MapPoint SiteLocation)> ValidatePrefIdAsync(
-            EmailClassificationResult classification,
-            Func<string, Task<MapPoint>> getSiteCoordsTask)
+      EmailClassificationResult classification,
+      string bodyPrefId,
+      Func<string, Task<MapPoint>> getSiteCoordsTask)
         {
-            IcTestResult prefIdTestResult;
             MapPoint foundLocation = null;
+            string subjectPrefId = null;
 
+            // This is the container for all PrefID related tests
+            var validationContainerTest = _namedTests.returnNewTestResult("GIS_PrefID_Validation", "", IcTestResult.TestType.Deliverable);
+
+            // Step 1: Determine the single, valid Pref ID from the subject line.
             if (!classification.PrefIds.Any())
             {
-                // Case 1: No PrefID was found in the subject line.
-                prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
-                prefIdTestResult.Passed = false;
+                var noSubjectTest = _namedTests.returnNewTestResult("GIS_NoPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                noSubjectTest.Passed = false;
+                validationContainerTest.AddSubordinateTestResult(noSubjectTest);
             }
             else if (classification.PrefIds.Count > 1)
             {
-                // Case 2: Multiple potential PrefIDs were found. We must find exactly one valid ID.
                 _log.RecordMessage($"Found multiple potential PrefIDs: {string.Join(", ", classification.PrefIds)}. Validating each...", BisLogMessageType.Note);
-
                 var validPrefIds = new List<string>();
                 foreach (var id in classification.PrefIds)
                 {
@@ -417,71 +428,66 @@ namespace IC_Loader_Pro.Services
 
                 if (validPrefIds.Count == 1)
                 {
-                    // Success! We found exactly one valid ID.
-                    string validId = validPrefIds.First();
-                    _log.RecordMessage($"Found a single valid PrefID ('{validId}') among the candidates.", BisLogMessageType.Note);
-
-                    // Now, we proceed with this single valid ID to check for coordinates.
-                    foundLocation = await getSiteCoordsTask(validId);
-                    if (foundLocation == null)
-                    {
-                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
-                        prefIdTestResult.Comments.Add($"PrefID '{validId}' is valid but has no coordinates in the database.");
-                        prefIdTestResult.Passed = false;
-                    }
-                    else
-                    {
-                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_ValidPrefIdFound", "", IcTestResult.TestType.Deliverable);
-                        prefIdTestResult.Comments.Add($"Found coordinates for single valid PrefID: {validId}");
-                        prefIdTestResult.Passed = true;
-                    }
+                    subjectPrefId = validPrefIds.First();
+                    _log.RecordMessage($"Found a single valid PrefID ('{subjectPrefId}') among the candidates.", BisLogMessageType.Note);
                 }
                 else
                 {
-                    // Failure: We found zero or more than one valid ID. The submission is ambiguous.
-                    prefIdTestResult = _namedTests.returnNewTestResult("GIS_MultipleValidPrefIDsOnSubjectLine", "", IcTestResult.TestType.Deliverable);
-                    prefIdTestResult.Comments.Add(validPrefIds.Any() ?
+                    var multiIdTest = _namedTests.returnNewTestResult("GIS_MultipleValidPrefIDsOnSubjectLine", "", IcTestResult.TestType.Deliverable);
+                    multiIdTest.Passed = false;
+                    multiIdTest.Comments.Add(validPrefIds.Any() ?
                         $"Found multiple valid PrefIDs ({string.Join(", ", validPrefIds)}), making the submission ambiguous." :
                         "Found multiple potential IDs, but none were valid.");
-                    prefIdTestResult.Passed = false;
+                    validationContainerTest.AddSubordinateTestResult(multiIdTest);
                 }
             }
-            else
+            else // Exactly one PrefID was found in subject.
             {
-                // Case 3: Exactly one PrefID was found.
                 string prefId = classification.PrefIds.First();
-
-                bool isIdValid = await IsValidPrefIdInDbAsync(prefId);
-
-                if (!isIdValid)
+                if (await IsValidPrefIdInDbAsync(prefId))
                 {
-                    // The PrefID itself is not a valid identifier in the database.
-                    prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
-                    prefIdTestResult.Comments.Add($"The identifier '{prefId}' is not a valid PrefID.");
-                    prefIdTestResult.Passed = false;
+                    subjectPrefId = prefId;
                 }
                 else
                 {
-                    // The ID is valid. NOW, check for coordinates.
-                    foundLocation = await getSiteCoordsTask(prefId);
-                    if (foundLocation == null)
-                    {
-                        // The PrefID is valid but has no matching coordinates.
-                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_NoValidPrefIdWithCoordsInSubjectLine", "", IcTestResult.TestType.Deliverable);
-                        prefIdTestResult.Comments.Add($"PrefID '{prefId}' is valid but has no coordinates in the database.");
-                        prefIdTestResult.Passed = false;
-                    }
-                    else
-                    {
-                        // Success! A single, valid PrefID with coordinates was found.
-                        prefIdTestResult = _namedTests.returnNewTestResult("GIS_ValidPrefIdFound", "", IcTestResult.TestType.Deliverable);
-                        prefIdTestResult.Comments.Add($"Found coordinates for PrefID: {prefId}");
-                        prefIdTestResult.Passed = true;
-                    }
+                    var invalidIdTest = _namedTests.returnNewTestResult("GIS_NoValidPrefIdInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                    invalidIdTest.Comments.Add($"The identifier '{prefId}' from the subject is not a valid PrefID.");
+                    invalidIdTest.Passed = false;
+                    validationContainerTest.AddSubordinateTestResult(invalidIdTest);
                 }
             }
 
-            return (prefIdTestResult, foundLocation);
+            // Step 2: If we have a valid subject ID, proceed.
+            if (!string.IsNullOrEmpty(subjectPrefId))
+            {
+                // A. Check for coordinates
+                foundLocation = await getSiteCoordsTask(subjectPrefId);
+                if (foundLocation == null)
+                {
+                    var noCoordsTest = _namedTests.returnNewTestResult("GIS_NoValidPrefIdWithCoordsInSubjectLine", "", IcTestResult.TestType.Deliverable);
+                    noCoordsTest.Comments.Add($"PrefID '{subjectPrefId}' is valid but has no coordinates in the database.");
+                    noCoordsTest.Passed = false;
+                    validationContainerTest.AddSubordinateTestResult(noCoordsTest);
+                }
+                else
+                {
+                    var validIdTest = _namedTests.returnNewTestResult("GIS_ValidPrefIdFound", "", IcTestResult.TestType.Deliverable);
+                    validIdTest.Comments.Add($"Found coordinates for PrefID: {subjectPrefId}");
+                    validIdTest.Passed = true;
+                    validationContainerTest.AddSubordinateTestResult(validIdTest);
+                }
+
+                // B. Check for discrepancy with the body Pref ID.
+                if (!string.IsNullOrEmpty(bodyPrefId) && !subjectPrefId.Equals(bodyPrefId, StringComparison.OrdinalIgnoreCase))
+                {
+                    var mismatchTest = _namedTests.returnNewTestResult("GIS_BodyPrefDiffersFromSubjectlinePref", "", IcTestResult.TestType.Deliverable);
+                    mismatchTest.Passed = false; // This is a failure that requires user attention
+                    mismatchTest.Comments.Add($"Pref ID in subject line ('{subjectPrefId}') differs from Pref ID in email body ('{bodyPrefId}').");
+                    validationContainerTest.AddSubordinateTestResult(mismatchTest);
+                }
+            }
+
+            return (validationContainerTest, foundLocation);
         }
 
         // In IC_Loader_Pro/Services/EmailProcessingService.cs
