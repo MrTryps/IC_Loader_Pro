@@ -54,9 +54,26 @@ namespace IC_Loader_Pro
         /// core services or resources used by your add-in.
         /// </summary>
         /// <returns>A Task that represents the initialization process.</returns>
-        protected override bool Initialize()
+        protected override bool Initialize()seems to work
+
         {
             _this = this;
+
+            //const string customTabId = "IC_Group";
+            //const string customTabStateId = "custom_tab_exists_state";
+
+            //// Check if the custom tab exists in the ribbon.
+            //var customTab = FrameworkApplication.
+            ////var customTab = FrameworkApplication.MainRibbon.Tabs.FirstOrDefault(
+            ////    t => t.Id.Equals(customTabId, StringComparison.OrdinalIgnoreCase));
+
+            //// If the tab was found, activate our custom state.
+            //if (customTab != null)
+            //{
+            //    FrameworkApplication.State.Activate(customTabStateId);
+            //}
+
+
 
             try
             {

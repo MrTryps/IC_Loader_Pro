@@ -501,6 +501,61 @@ namespace IC_Loader_Pro.Services
 
             return result;
         }
+
+        /// <summary>
+        /// Finds an email by its Internet Message ID within a specific folder and opens it in an Outlook window.
+        /// </summary>
+        public void DisplayEmailById(Outlook.Application outlookApp, string messageId, string fullFolderPath)
+        {
+            Log.RecordMessage($"Requesting to display email '{messageId}' from folder '{fullFolderPath}'.", BisLogMessageType.Note);
+            if (string.IsNullOrEmpty(messageId)) return;
+
+            if (!messageId.StartsWith("<")) messageId = "<" + messageId;
+            if (!messageId.EndsWith(">")) messageId = messageId + ">";
+
+            Outlook.NameSpace mapiNamespace = null;
+            Outlook.MAPIFolder targetFolder = null;
+            object itemToDisplay = null;
+
+            try
+            {
+                mapiNamespace = outlookApp.GetNamespace("MAPI");
+                var (storeName, folderPath) = ParseOutlookPath(fullFolderPath);
+
+                targetFolder = GetFolderFromPath(mapiNamespace, storeName, folderPath);
+                if (targetFolder == null)
+                {
+                    Log.RecordError($"Could not find source folder '{fullFolderPath}' to display email.", null, nameof(DisplayEmailById));
+                    return;
+                }
+
+                string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
+                itemToDisplay = targetFolder.Items.Find(filter);
+
+                if (itemToDisplay is Outlook.MailItem mailItem)
+                {
+                    mailItem.Display(false); // 'false' makes the window non-modal
+                }
+                else
+                {
+                    Log.RecordError($"Could not find email with ID '{messageId}' in folder '{targetFolder.FolderPath}' to display.", null, nameof(DisplayEmailById));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError($"An exception occurred while trying to display email '{messageId}'.", ex, nameof(DisplayEmailById));
+            }
+            finally
+            {
+                // Clean up COM objects
+                if (itemToDisplay != null) Marshal.ReleaseComObject(itemToDisplay);
+                if (targetFolder != null) Marshal.ReleaseComObject(targetFolder);
+                if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
+            }
+        }
+
+
+
         #region Private Helpers
         /// <summary>
         /// Maps an Outlook.MailItem to the custom EmailItem model and saves attachments.

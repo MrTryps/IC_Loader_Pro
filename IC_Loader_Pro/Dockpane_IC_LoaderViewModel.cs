@@ -253,6 +253,7 @@ namespace IC_Loader_Pro
             AddSubmissionCommand = new RelayCommand(async () => await OnAddSubmissionAsync(), () => IsUIEnabled);
             CreateNewIcDeliverableCommand = new RelayCommand(async () => await OnCreateNewIcDeliverableAsync(), () => IsUIEnabled);
             OpenConnectionTesterCommand = new RelayCommand(OnOpenConnectionTester, () => IsUIEnabled);
+            OpenEmailInOutlookCommand = new RelayCommand(async () => await OnOpenEmailInOutlook(), () => _currentEmail != null);
         }
         #endregion
      

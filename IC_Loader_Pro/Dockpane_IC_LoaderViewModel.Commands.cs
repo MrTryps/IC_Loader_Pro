@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Controls;
@@ -55,6 +56,7 @@ namespace IC_Loader_Pro
         public ICommand AddSubmissionCommand { get; private set; }
         public ICommand CreateNewIcDeliverableCommand { get; private set; }
         public ICommand OpenConnectionTesterCommand { get; private set; }
+        public ICommand OpenEmailInOutlookCommand { get; private set; }
 
         #endregion
 
@@ -638,6 +640,46 @@ namespace IC_Loader_Pro
                 await ZoomToGeometryAsync(new List<Geometry> { _currentSiteLocation });
             }
         }
+
+        private async Task OnOpenEmailInOutlook()
+        {
+            if (_currentEmail == null || _currentIcSetting == null) return;
+
+            StatusMessage = "Opening email in Outlook...";
+            IsUIEnabled = false;
+
+            try
+            {
+                // Run the Outlook interaction on a background thread
+                await QueuedTask.Run(() =>
+                {
+                    Outlook.Application outlookApp = null;
+                    try
+                    {
+                        outlookApp = new Outlook.Application();
+                        var outlookService = new OutlookService();
+                        outlookService.DisplayEmailById(outlookApp, _currentEmail.Emailid, _currentIcSetting.OutlookInboxFolderPath);
+                    }
+                    finally
+                    {
+                        if (outlookApp != null) Marshal.ReleaseComObject(outlookApp);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("Failed to open email in Outlook.", ex, nameof(OnOpenEmailInOutlook));
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Could not open the email in Outlook. Please ensure Outlook is running.", "Error");
+            }
+            finally
+            {
+                StatusMessage = "Ready.";
+                IsUIEnabled = true;
+            }
+        }
+
+
+
 
         //private async Task FinalizeSubmissionAsync(bool wasApproved)
         //{
