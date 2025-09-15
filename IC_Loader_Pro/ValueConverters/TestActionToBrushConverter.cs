@@ -16,12 +16,15 @@ namespace IC_Loader_Pro.ValueConverters
                 {
                     case TestActionResponse.Pass:
                         return Brushes.Green;
+
                     case TestActionResponse.Note:
                     case TestActionResponse.Warn:
-                        return Brushes.DarkOrange;
-                    case TestActionResponse.Fail:
                     case TestActionResponse.Manual:
+                        return Brushes.DarkOrange;
+
+                    case TestActionResponse.Fail:
                         return Brushes.Red;
+
                     default:
                         return Brushes.Black;
                 }

@@ -142,7 +142,7 @@ namespace IC_Loader_Pro.Services
                     {
                         var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", "", IcTestResult.TestType.Submission);
                         duplicateTest.Passed = false;
-                        duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}. These files will be ignored.");
+                       // duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}. These files will be ignored.");
                         analysisResult.TestResult.AddSubordinateTestResult(duplicateTest);
                     }
                 }

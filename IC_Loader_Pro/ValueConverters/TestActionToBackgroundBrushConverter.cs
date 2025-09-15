@@ -16,12 +16,17 @@ namespace IC_Loader_Pro.ValueConverters
                 {
                     case TestActionResponse.Pass:
                         return new SolidColorBrush(Colors.Green) { Opacity = 0.1 };
+
                     case TestActionResponse.Note:
                     case TestActionResponse.Warn:
-                        return new SolidColorBrush(Colors.DarkOrange) { Opacity = 0.1 };
-                    case TestActionResponse.Fail:
                     case TestActionResponse.Manual:
+                        return new SolidColorBrush(Colors.DarkOrange) { Opacity = 0.1 };
+
+                    case TestActionResponse.Fail:
+                    // IncompleteTest is also a failure, but less severe. Keeping it red.
+                    case TestActionResponse.IncompleteTest:
                         return new SolidColorBrush(Colors.Red) { Opacity = 0.1 };
+
                     default:
                         return Brushes.Transparent;
                 }

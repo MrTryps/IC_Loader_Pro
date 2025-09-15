@@ -54,7 +54,157 @@ namespace IC_Loader_Pro.Services
 
             return userClickedSend;
         }
+
         private OutgoingEmail BuildReplyEmail(string deliverableId, IcTestResult testResult, string icType, List<AnalyzedFile> submittedFiles)
+        {
+            var finalCumulativeAction = testResult.CumulativeAction;
+            if (finalCumulativeAction.EmailRp != true && finalCumulativeAction.EmailHazsite != true) return null;
+
+            var outgoingEmail = new OutgoingEmail();
+            var deliverableInfo = IcRules.ReturnEmailDeliverableInfo(deliverableId);
+            var namedTests = new IcNamedTests(Log, PostGreTool);
+            var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "DELID", deliverableId },
+                { "PREFID", testResult.OutputParams.GetValueOrDefault("prefid", "N/A") },
+                { "SUBJECTLINE", deliverableInfo.SubjectLine },
+                { "SENDDATE", deliverableInfo.SubmitDate },
+                { "Ic_Type", icType }
+            };
+
+            if (finalCumulativeAction.EmailRp == true && !string.IsNullOrEmpty(deliverableInfo.SenderEmail))
+            {
+                outgoingEmail.ToRecipients.Add(deliverableInfo.SenderEmail);
+            }
+            if (finalCumulativeAction.EmailHazsite == true)
+            {
+                outgoingEmail.BccRecipients.Add("SRPGIS@dep.nj.gov");
+            }
+            if (!outgoingEmail.ToRecipients.Any() && !outgoingEmail.BccRecipients.Any()) return null;
+
+            var rootRule = testResult.TestRule;
+            string subjectTemplateText;
+            string bodyTemplateText = "<P><div align='right'>{Template_GIS_OutgoingEmailID_Small}</DIV></P>";
+
+            if (!testResult.Passed || finalCumulativeAction.ResultAction == TestActionResponse.Fail)
+            {
+                subjectTemplateText = rootRule.FailSubject?.ReplacementText ?? "Submission Processing Issue for {PREFID}";
+                bodyTemplateText += rootRule.FailMessage?.ReplacementText ?? "<p>Your submission could not be processed due to the following reason(s):</p>";
+
+                var failureMessages = new HashSet<string>();
+
+                // Define the specific, user-facing tests we want to report on.
+                var testsToReport = new[]
+                {
+                    "GIS_DuplicateFilenamesInAttachments",
+                    "GIS_Incomplete_Dataset",
+                    "GIS_ShapeCheck",
+                    "GIS_No_Shapes_Found",
+                    "GIS_FileReadable",
+                    "GIS_NoPrefIdInSubjectLine" // Add any other specific failures you want to report
+                };
+
+                var allSpecificFailures = new List<IcTestResult>();
+                foreach (var testName in testsToReport)
+                {
+                    FindAllFailedTestsByName(testResult, testName, allSpecificFailures);
+                }
+
+                foreach (var failure in allSpecificFailures)
+                {
+                    // Per your request, we will ONLY use the message from the rule's template
+                    string reasonTemplate = failure.TestRule.FailMessage?.ReplacementText ?? failure.TestRule.ErrorComment;
+
+                    if (!string.IsNullOrEmpty(reasonTemplate))
+                    {
+                        var filledResult = namedTests.FillAllParameters(reasonTemplate, parameters);
+                        if (!string.IsNullOrWhiteSpace(filledResult.ProcessedText))
+                        {
+                            failureMessages.Add(filledResult.ProcessedText);
+                        }
+                    }
+                }
+
+                if (failureMessages.Any())
+                {
+                    var formattedReasons = failureMessages.Select(reason => $"<li>{reason}</li>");
+                    outgoingEmail.AddToMainBody($"<ul>{string.Join("", formattedReasons)}</ul>");
+                }
+
+                outgoingEmail.AddToClosingText("{Template_GIS_Rejected}");
+            }
+            else
+            {
+                subjectTemplateText = rootRule.PassSubject?.ReplacementText ?? "Submission Processed for {PREFID}";
+                bodyTemplateText += rootRule.PassMessage?.ReplacementText ?? "<p>Your submission has been processed successfully.</p>";
+            }
+
+            if (finalCumulativeAction.IncludeSubmittedFiles && submittedFiles != null)
+            {
+                foreach (var file in submittedFiles)
+                {
+                    string fullPath = Path.Combine(file.CurrentPath, file.FileName);
+                    if (File.Exists(fullPath))
+                    {
+                        outgoingEmail.Attachments.Add(fullPath);
+                    }
+                }
+            }
+
+            var subjectResult = namedTests.FillAllParameters(subjectTemplateText, parameters);
+            var openingTextResult = namedTests.FillAllParameters(bodyTemplateText, parameters);
+            var mainBodyResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.MainBodyText), parameters);
+            var closingTextResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.ClosingText), parameters);
+
+            outgoingEmail.Subject = subjectResult.ProcessedText;
+            outgoingEmail.OpeningText.Clear();
+            outgoingEmail.AddToOpeningText(openingTextResult.ProcessedText);
+            outgoingEmail.MainBodyText.Clear();
+            outgoingEmail.AddToMainBody(mainBodyResult.ProcessedText);
+            outgoingEmail.ClosingText.Clear();
+            outgoingEmail.AddToClosingText(closingTextResult.ProcessedText);
+
+            var allMissingParams = subjectResult.MissingParameters
+                                    .Union(openingTextResult.MissingParameters)
+                                    .Union(mainBodyResult.MissingParameters)
+                                    .Union(closingTextResult.MissingParameters)
+                                    .Distinct().ToList();
+
+            if (allMissingParams.Any())
+            {
+                string missingParamsMessage = "The following parameters were found in the email templates but were not provided:\n\n- " +
+                                              string.Join("\n- ", allMissingParams);
+
+                FrameworkApplication.Current.Dispatcher.Invoke(() =>
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(missingParamsMessage, "Missing Email Parameters");
+                });
+            }
+
+            return outgoingEmail;
+        }
+
+        /// <summary>
+        /// Recursively searches a test result tree and creates a flat list of all failed tests
+        /// that have a specific name.
+        /// </summary>
+        private void FindAllFailedTestsByName(IcTestResult testResult, string nameToFind, List<IcTestResult> foundTests)
+        {
+            if (testResult == null) return;
+
+            if (!testResult.Passed && testResult.TestRule.Name.Equals(nameToFind, StringComparison.OrdinalIgnoreCase))
+            {
+                foundTests.Add(testResult);
+            }
+
+            foreach (var child in testResult.SubTestResults)
+            {
+                FindAllFailedTestsByName(child, nameToFind, foundTests);
+            }
+        }
+
+
+        private OutgoingEmail BuildReplyEmail_bak(string deliverableId, IcTestResult testResult, string icType, List<AnalyzedFile> submittedFiles)
         {
             var finalCumulativeAction = testResult.CumulativeAction;
 
@@ -167,11 +317,44 @@ namespace IC_Loader_Pro.Services
             return outgoingEmail;
         }
 
+        /// Recursively traverses a test result tree and creates a flat list of all failed tests.
+        /// This simpler approach ensures every single failure is found.
+        /// </summary>
+        private void FlattenFailedTests(IcTestResult testResult, List<IcTestResult> flatList)
+        {
+            // If the current test failed, add it to our list.
+            if (!testResult.Passed)
+            {
+                // Only add tests that actually have a message to display. This avoids adding
+                // generic parent containers that don't have their own error text.
+                //bool hasMessage = !string.IsNullOrEmpty(testResult.TestRule.FailMessage?.ReplacementText) ||
+                //                  !string.IsNullOrEmpty(testResult.TestRule.ErrorComment) ||
+                //                  testResult.Comments.Any();
+                bool hasMessage = !string.IsNullOrEmpty(testResult.TestRule.FailMessage?.ReplacementText);
+                if (hasMessage)
+                {
+                    flatList.Add(testResult);
+                }
+            }
+
+            // Always recurse into children to find all other failures.
+            foreach (var subResult in testResult.SubTestResults)
+            {
+                FlattenFailedTests(subResult, flatList);
+            }
+        }
+
+
+
+
+
+
+
         /// <summary>
         /// Recursively traverses a test result tree and creates a flat list of all failed tests
         /// that are not simply containers for other failed tests.
         /// </summary>
-        private void FlattenFailedTests(IcTestResult testResult, List<IcTestResult> flatList)
+        private void FlattenFailedTests_bak(IcTestResult testResult, List<IcTestResult> flatList)
         {
             // If the current test failed...
             if (!testResult.Passed)
