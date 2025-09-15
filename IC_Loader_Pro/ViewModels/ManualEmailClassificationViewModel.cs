@@ -4,18 +4,15 @@ using System.Collections.Generic;
 using System.Linq;
 using BIS_Tools_DataModels_2025;
 
-// Note: Ensure your file is named ManualEmailClassificationViewModel.cs
 namespace IC_Loader_Pro.ViewModels
 {
-    // The class is renamed
     public class ManualEmailClassificationViewModel : ArcGIS.Desktop.Framework.Contracts.PropertyChangedBase
     {
         public string Sender { get; }
         public string Subject { get; }
-
         public List<string> AttachmentFileNames { get; }
-
         public List<EmailType> AvailableEmailTypes { get; }
+
         private EmailType _selectedEmailType;
         public EmailType SelectedEmailType
         {
@@ -23,17 +20,20 @@ namespace IC_Loader_Pro.ViewModels
             set => SetProperty(ref _selectedEmailType, value);
         }
 
-        // The constructor is updated to accept the list of attachment names
         public ManualEmailClassificationViewModel(string sender, string subject, List<string> attachmentNames)
         {
             Sender = sender;
             Subject = string.IsNullOrWhiteSpace(subject) ? "[No Subject]" : subject;
-            AttachmentFileNames = attachmentNames; // Set the property
+            AttachmentFileNames = attachmentNames;
 
-            AvailableEmailTypes = Enum.GetValues(typeof(BIS_Tools_DataModels_2025.EmailType))
-                                      .Cast<EmailType>()
-                                      .Where(e => e == EmailType.CEA || e == EmailType.DNA || e == EmailType.WRS)
-                                      .ToList();
+            // --- START OF THE FIX ---
+            // Instead of Enum.GetValues(), we use the static ListProcessableTypes() method from our smart enum class.
+            // This is the correct way to get the values from your custom EmailType class.
+            AvailableEmailTypes = EmailType.ListProcessableTypes()
+                                           .Where(e => e == EmailType.CEA || e == EmailType.DNA || e == EmailType.WRS)
+                                           .ToList();
+            // --- END OF THE FIX ---
+
             SelectedEmailType = AvailableEmailTypes.FirstOrDefault();
         }
     }

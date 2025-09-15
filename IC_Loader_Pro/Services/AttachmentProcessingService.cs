@@ -88,7 +88,7 @@ namespace IC_Loader_Pro.Services
             // Wrap the creation of the root test result in its own try-catch block.
             try
             {
-                rootTest = _namedTests.returnNewTestResult("GIS_Attachments_Tests_Passed", "", IcTestResult.TestType.Deliverable);
+                rootTest = _namedTests.returnNewTestResult("GIS_Attachments_Tests", "", IcTestResult.TestType.Deliverable);
             }
             catch (Exception ex)
             {
@@ -98,7 +98,7 @@ namespace IC_Loader_Pro.Services
                 rootTest = new IcTestResult(tempRule, "", IcTestResult.TestType.Deliverable, _log, null, _namedTests)
                 {
                     Passed = false,
-                    Comments = { "Critical error: Could not load the 'GIS_Attachments_Tests_Passed' rule from the database." }
+                    Comments = { "Critical error: Could not load the 'GIS_Attachments_Tests' rule from the database." }
                 };
             }
             analysisResult.TestResult = rootTest;
@@ -124,7 +124,7 @@ namespace IC_Loader_Pro.Services
                 // Wrap the creation of the unzip test result in its own try-catch block.
                 try
                 {
-                    unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip_Passed", "", IcTestResult.TestType.Deliverable);
+                    unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip", "", IcTestResult.TestType.Deliverable);
                     if (unzippedFilesInfo.Any())
                     {
                         unzipTestResult.Comments.Add($"Successfully extracted {unzippedFilesInfo.Count} zip file(s).");

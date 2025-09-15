@@ -1,4 +1,5 @@
-﻿using ArcGIS.Desktop.Framework;
+﻿using ArcGIS.Desktop.Catalog;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using IC_Loader_Pro.Models;
 using IC_Rules_2025;
@@ -32,7 +33,24 @@ namespace IC_Loader_Pro.ViewModels
         // --- END OF MODIFIED CODE ---
 
         public ObservableCollection<string> Attachments { get; } = new ObservableCollection<string>();
+
+        private string _selectedAttachment;
+        public string SelectedAttachment
+        {
+            get => _selectedAttachment;
+            set
+            {
+                // This SetProperty call is crucial. It notifies the UI that a property has changed.
+                SetProperty(ref _selectedAttachment, value);
+
+                // This line tells the RelayCommand to re-evaluate its CanExecute condition.
+                (RemoveAttachmentCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
+
         public ICommand ShowResultsCommand { get; }
+        public ICommand AddAttachmentCommand { get; }
+        public ICommand RemoveAttachmentCommand { get; }
 
         public EmailPreviewViewModel(OutgoingEmail email, IcTestResult testResult)
         {
@@ -51,6 +69,33 @@ namespace IC_Loader_Pro.ViewModels
                 email.Attachments.ForEach(a => Attachments.Add(a));
             }
             ShowResultsCommand = new RelayCommand(OnShowResults, () => _testResult != null);
+            AddAttachmentCommand = new RelayCommand(OnAddAttachment);
+            RemoveAttachmentCommand = new RelayCommand(OnRemoveAttachment, () => !string.IsNullOrEmpty(SelectedAttachment));
+        }
+
+        private void OnAddAttachment()
+        {
+            var openDialog = new OpenItemDialog
+            {
+                Title = "Add Attachment",
+                MultiSelect = true, // Allow selecting multiple files
+            };
+
+            if (openDialog.ShowDialog() == true)
+            {
+                foreach (var item in openDialog.Items)
+                {
+                    Attachments.Add(item.Path);
+                }
+            }
+        }
+
+        private void OnRemoveAttachment()
+        {
+            if (!string.IsNullOrEmpty(SelectedAttachment))
+            {
+                Attachments.Remove(SelectedAttachment);
+            }
         }
 
         private void OnShowResults()

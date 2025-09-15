@@ -44,10 +44,13 @@
         <TextBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Subject}" VerticalAlignment="Center" Margin="0,0,0,5"/>
 
         <TextBlock Grid.Row="4" Grid.Column="0" Text="Files Included:" VerticalAlignment="Center" Margin="0,0,10,5"/>
-        <ListBox Grid.Row="4" Grid.Column="1" ItemsSource="{Binding Attachments}" Margin="0,0,0,5" MaxHeight="60"/>
+        <ListBox Grid.Row="4" Grid.Column="1" 
+         ItemsSource="{Binding Attachments}" 
+         SelectedItem="{Binding SelectedAttachment}" 
+         Margin="0,0,0,5" MaxHeight="60"/>
         <StackPanel Grid.Row="4" Grid.Column="2" VerticalAlignment="Center">
-            <Button Content="Add" Width="60" Margin="2"/>
-            <Button Content="Remove" Width="60" Margin="2"/>
+            <Button Content="Add" Width="60" Margin="2" Command="{Binding AddAttachmentCommand}"/>
+            <Button Content="Remove" Width="60" Margin="2" Command="{Binding RemoveAttachmentCommand}"/>
         </StackPanel>
 
         <GroupBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Header="HTML (Editable)">

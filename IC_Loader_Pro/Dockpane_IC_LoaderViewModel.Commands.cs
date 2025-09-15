@@ -511,7 +511,7 @@ namespace IC_Loader_Pro
 
             // 2. Mark the final result as failed and add the specific manual rejection note.
             finalTestResult.Passed = false;
-            finalTestResult.AddComment($"Submission was manually rejected by user: {Environment.UserName}");
+            //finalTestResult.AddComment($"Submission was manually rejected by user: {Environment.UserName}");
 
             // Call the generic finalizer with the complete, failed test result object.
             await FinalizeSubmissionAsync(finalTestResult);
@@ -842,8 +842,6 @@ namespace IC_Loader_Pro
                 await submissionService.RecordPhysicalFilesAsync(newDelId, _currentAttachmentAnalysis.AllFiles, submissionIdMap);
 
                 // 5. If the submission was approved, process and save the shapes
-                int goodCount = 0;
-                int dupCount = 0;
                 if (finalTestResult.Passed)
                 {
                     foreach (var shapeToSave in _selectedShapes)
@@ -856,14 +854,13 @@ namespace IC_Loader_Pro
                             continue;
                         }
 
-                        // Get the next unique Shape ID from the database service.
                         string newShapeId = await shapeService.GetNextShapeIdAsync(newDelId, _currentIcSetting.IdPrefix);
 
                         bool recordCreated = await shapeService.RecordShapeInfoAsync(newShapeId, submissionId, newDelId, CurrentPrefId, SelectedIcType.Name);
                         if (!recordCreated)
                         {
                             Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
-                            continue; // Skip to the next shape if the info record fails
+                            continue;
                         }
 
                         bool isDuplicate = await shapeService.IsDuplicateInProposedAsync(shapeToSave.Geometry, CurrentPrefId, SelectedIcType.Name);
@@ -895,23 +892,34 @@ namespace IC_Loader_Pro
                 {
                     await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
                 }
-                string finalStatus = (goodCount == 0 && dupCount > 0) ? "Duplicate" : "Migrated";
-                await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, "Pass");
+                string finalStatus = (goodCounts.Values.Sum() > 0) ? "Migrated" : "Failed";
+                string finalValidity = finalTestResult.Passed ? "Pass" : "Fail";
+                await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, finalValidity);
 
                 // 7. Save test results and send notification
                 await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
-                bool emailWasSent = await notificationService.SendConfirmationEmailAsync(newDelId, finalTestResult, SelectedIcType.Name, outlookApp);
+
+                // **MODIFIED**: Pass the list of all submitted files to the email service
+                var emailWasSent = await notificationService.SendConfirmationEmailAsync(
+                    newDelId,
+                    finalTestResult,
+                    SelectedIcType.Name,
+                    outlookApp,
+                    _currentAttachmentAnalysis.AllFiles);
 
                 if (!emailWasSent)
                 {
                     StatusMessage = "Operation canceled by user.";
                     IsEmailActionEnabled = true; // Re-enable the UI
+                                                 // Important: We need to reverse the database changes here or provide a manual way to clean up.
+                                                 // For now, we will stop the process.
+                    Log.RecordMessage($"User canceled email send for deliverable {newDelId}. The database record was created but the email was not moved. Manual cleanup may be required.",BisLogMessageType.FatalError);
                     return; // ABORT the finalization
                 }
 
-
                 // 8. Move the processed email
-                outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, _currentIcSetting.OutlookInboxFolderPath, _currentIcSetting.OutlookProcessedFolderPath);
+                var (store, folder) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
+                outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, $"\\\\{store}\\{folder}", _currentIcSetting.OutlookProcessedFolderPath);
 
                 StatusMessage = $"Successfully finalized submission as {newDelId}.";
             }
