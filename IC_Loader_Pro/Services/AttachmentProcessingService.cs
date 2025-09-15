@@ -78,7 +78,7 @@ namespace IC_Loader_Pro.Services
         }
 
 
-        public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType)
+        public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType, List<EmailItem.AttachmentItem> attachments)
         {
             const string methodName = "AnalyzeAttachments";
 
@@ -116,7 +116,40 @@ namespace IC_Loader_Pro.Services
 
             try
             {
-                // Step 1: Unzip any archive files.
+                // 1. Perform the duplicate filename check FIRST.
+                var duplicateOriginalFilenames = attachments
+                                                   .GroupBy(a => a.OriginalFileName, StringComparer.OrdinalIgnoreCase)
+                                                   .Where(g => g.Count() > 1)
+                                                   .Select(g => g.Key)
+                                                   .ToList();
+
+                var problematicBaseNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                if (duplicateOriginalFilenames.Any())
+                {
+                    var multiFileDuplicates = new List<string>();
+                    foreach (var dupName in duplicateOriginalFilenames)
+                    {
+                        var rule = _rules.ReturnFilesetRuleForExtension(Path.GetExtension(dupName).TrimStart('.'));
+                        if (rule != null && rule.RequiredExtensions.Count > 1)
+                        {
+                            multiFileDuplicates.Add(dupName);
+                            problematicBaseNames.Add(Path.GetFileNameWithoutExtension(dupName));
+                        }
+                    }
+
+                    if (multiFileDuplicates.Any())
+                    {
+                        var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", "", IcTestResult.TestType.Submission);
+                        duplicateTest.Passed = false;
+                        duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}. These files will be ignored.");
+                        analysisResult.TestResult.AddSubordinateTestResult(duplicateTest);
+                    }
+                }
+
+
+
+                // Step 2: Unzip any archive files.
                 var unzipService = new UnzipService(_log);
                 var unzippedFilesInfo = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
 
@@ -140,7 +173,7 @@ namespace IC_Loader_Pro.Services
                     _log.RecordError("Could not create the unzip test result. This step will be skipped in the results.", ex, methodName);
                 }
 
-                // Step 2: Identify logical GIS filesets by searching the root folder and all unzipped sub-folders.
+                // Step 3: Identify logical GIS filesets by searching the root folder and all unzipped sub-folders.
                 var allIdentifiedFileSets = new List<BIS_Tools_DataModels_2025.fileset>();
                 allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(folderToSearch, icType, false));
                 foreach (var unzippedInfo in unzippedFilesInfo)
@@ -158,7 +191,7 @@ namespace IC_Loader_Pro.Services
                     analysisResult.TestResult.Passed = false;
                 }
 
-                // Step 3: Create a comprehensive list of all individual files.
+                // Step 4: Create a comprehensive list of all individual files.
                 var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch);
 
                 foreach (string filePath in allFilesFound)

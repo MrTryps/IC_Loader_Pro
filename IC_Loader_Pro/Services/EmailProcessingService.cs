@@ -177,68 +177,20 @@ namespace IC_Loader_Pro.Services
 
 
         public async Task<EmailProcessingResult> ProcessEmailAsync(
-         Outlook.Application outlookApp,
-         EmailItem emailToProcess,
-         EmailClassificationResult classification,
-         string selectedIcType,
-         string sourceFolderPath,
-         string sourceStoreName,
-         bool wasManuallyClassified,
-         EmailType finalType,
-         Func<string, Task<MapPoint>> getSiteCoordsTask)
+    Outlook.Application outlookApp,
+    EmailItem emailToProcess,
+    EmailClassificationResult classification,
+    string selectedIcType,
+    string sourceFolderPath,
+    string sourceStoreName,
+    bool wasManuallyClassified,
+    EmailType finalType,
+    Func<string, Task<MapPoint>> getSiteCoordsTask)
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
             var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
-            AttachmentAnalysisResult attachmentAnalysis = null;
-
-            // --- START OF MODIFIED LOGIC ---
-            // This flag will track if we found a critical attachment error.
-            bool hasAttachmentError = false;
-
-
-            // 1. Perform the duplicate filename check first.
-            if (emailToProcess != null && emailToProcess.Attachments.Any())
-            {
-                var duplicateOriginalFilenames = emailToProcess.Attachments
-                                                   .GroupBy(a => a.OriginalFileName, StringComparer.OrdinalIgnoreCase)
-                                                   .Where(g => g.Count() > 1)
-                                                   .Select(g => g.Key)
-                                                   .ToList();
-
-                if (duplicateOriginalFilenames.Any())
-                {
-                    var multiFileDuplicates = new List<string>();
-                    foreach (var dupName in duplicateOriginalFilenames)
-                    {
-                        var rule = _rules.ReturnFilesetRuleForExtension(Path.GetExtension(dupName).TrimStart('.'));
-                        if (rule != null && rule.RequiredExtensions.Count > 1)
-                        {
-                            multiFileDuplicates.Add(dupName);
-                        }
-                    }
-
-                    if (multiFileDuplicates.Any())
-                    {
-                        var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
-                        duplicateTest.Passed = false;
-                        duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}");
-                        rootTestResult.AddSubordinateTestResult(duplicateTest);
-                        hasAttachmentError = true; // Set the flag
-                    }
-                }
-            }
-
-
-
-
-            if (currentIcSetting == null)
-            {
-                rootTestResult.Passed = false;
-                rootTestResult.Comments.Add($"Fatal error: Rules for queue '{selectedIcType}' not found.");
-                return new EmailProcessingResult { TestResult = rootTestResult };
-            }
 
             var subjectLineTest = _namedTests.returnNewTestResult("GIS_Subjectline_Tests", "-1", IcTestResult.TestType.Deliverable);
             if (wasManuallyClassified)
@@ -252,13 +204,9 @@ namespace IC_Loader_Pro.Services
             var (prefIdTest, siteLocation) = await ValidatePrefIdAsync(classification, getSiteCoordsTask);
             rootTestResult.AddSubordinateTestResult(prefIdTest);
 
-            if (hasAttachmentError)
-            {
-                return new EmailProcessingResult { TestResult = rootTestResult };
-            }
-
             var outlookService = new OutlookService();
 
+            // 1. Handle Spam, Auto-Replies, and Mismatched IC Types
             if (finalType == EmailType.Spam || finalType == EmailType.AutoResponse || (finalType.Name != selectedIcType && !wasManuallyClassified))
             {
                 string moveReason;
@@ -283,38 +231,28 @@ namespace IC_Loader_Pro.Services
                     NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, fullDestPath, moveReason);
                 }
 
+                // Return a result with a null TestResult to signal an automatic advance.
                 return new EmailProcessingResult { TestResult = null };
             }
 
-            // Process Attachments and add their results directly to the main tree
+            // 2. Process Attachments
             var attachmentService = new AttachmentService(this._rules, this._namedTests, Module1.FileTool, this._log);
-            attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType);
+            // Pass the original attachment list from the EmailItem to the service for the duplicate check.
+            AttachmentAnalysisResult attachmentAnalysis = attachmentService.AnalyzeAttachments(emailToProcess.TempFolderPath, selectedIcType, emailToProcess.Attachments);
+
             rootTestResult.AddSubordinateTestResult(attachmentAnalysis.TestResult);
 
-            if (attachmentAnalysis.TestResult.Comments.Contains("Email contains no attachments."))
-            {
-                rootTestResult.Passed = false;
-                rootTestResult.Comments.Add("No attachments found. Treating as Correspondence.");
-                string reason = "Email contains no attachments to process.";
-                NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
-                return new EmailProcessingResult { TestResult = null, AttachmentAnalysis = attachmentAnalysis };
-            }
-
-            if (attachmentAnalysis.TestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
-            {
-                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
-            }
-
+            // If there are no valid, processable datasets AFTER the analysis (could be due to duplicates, etc.), treat as correspondence.
             if (!attachmentAnalysis.IdentifiedFileSets.Any())
             {
                 rootTestResult.Passed = false;
                 rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
                 string reason = "No valid GIS datasets found in attachments.";
                 NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
-                return new EmailProcessingResult { TestResult = null, AttachmentAnalysis = attachmentAnalysis };
+                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
             }
 
-            // Process Features and add their results directly to the main tree
+            // 3. Process Features from the (now guaranteed to be valid and non-duplicate) filesets
             var featureService = new FeatureProcessingService(_rules, _namedTests, _log);
             var featureProcessingContainerTest = _namedTests.returnNewTestResult("GIS_SubmissionFileCheck", emailToProcess.Emailid, IcTestResult.TestType.Submission);
             List<ShapeItem> foundShapes = await featureService.AnalyzeFeaturesFromFilesetsAsync(attachmentAnalysis.IdentifiedFileSets, selectedIcType, siteLocation, featureProcessingContainerTest);
