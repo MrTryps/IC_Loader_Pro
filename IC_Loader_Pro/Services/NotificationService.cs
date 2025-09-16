@@ -63,7 +63,7 @@ namespace IC_Loader_Pro.Services
             var outgoingEmail = new OutgoingEmail();
             var deliverableInfo = IcRules.ReturnEmailDeliverableInfo(deliverableId);
             var namedTests = new IcNamedTests(Log, PostGreTool);
-            var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var baseParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "DELID", deliverableId },
                 { "PREFID", testResult.OutputParams.GetValueOrDefault("prefid", "N/A") },
@@ -101,6 +101,7 @@ namespace IC_Loader_Pro.Services
                     "GIS_ShapeCheck",
                     "GIS_No_Shapes_Found",
                     "GIS_FileReadable",
+                    "GIS_MultipleValidPrefIDsOnSubjectLine",
                     "GIS_NoPrefIdInSubjectLine" // Add any other specific failures you want to report
                 };
 
@@ -112,12 +113,21 @@ namespace IC_Loader_Pro.Services
 
                 foreach (var failure in allSpecificFailures)
                 {
-                    // Per your request, we will ONLY use the message from the rule's template
+                    // Create a temporary, combined dictionary for this specific failure.
+                    // It starts with all the base parameters...
+                    var combinedParameters = new Dictionary<string, string>(baseParameters, StringComparer.OrdinalIgnoreCase);
+
+                    // ...and then adds/overwrites them with the specific parameters from the failed test.
+                    foreach (var kvp in failure.OutputParams)
+                    {
+                        combinedParameters[kvp.Key] = kvp.Value;
+                    }
                     string reasonTemplate = failure.TestRule.FailMessage?.ReplacementText ?? failure.TestRule.ErrorComment;
 
                     if (!string.IsNullOrEmpty(reasonTemplate))
                     {
-                        var filledResult = namedTests.FillAllParameters(reasonTemplate, parameters);
+                        // Use the new combined dictionary to fill in the template.
+                        var filledResult = namedTests.FillAllParameters(reasonTemplate, combinedParameters);
                         if (!string.IsNullOrWhiteSpace(filledResult.ProcessedText))
                         {
                             failureMessages.Add(filledResult.ProcessedText);
@@ -151,10 +161,10 @@ namespace IC_Loader_Pro.Services
                 }
             }
 
-            var subjectResult = namedTests.FillAllParameters(subjectTemplateText, parameters);
-            var openingTextResult = namedTests.FillAllParameters(bodyTemplateText, parameters);
-            var mainBodyResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.MainBodyText), parameters);
-            var closingTextResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.ClosingText), parameters);
+            var subjectResult = namedTests.FillAllParameters(subjectTemplateText, baseParameters);
+            var openingTextResult = namedTests.FillAllParameters(bodyTemplateText, baseParameters);
+            var mainBodyResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.MainBodyText), baseParameters);
+            var closingTextResult = namedTests.FillAllParameters(string.Join("", outgoingEmail.ClosingText), baseParameters);
 
             outgoingEmail.Subject = subjectResult.ProcessedText;
             outgoingEmail.OpeningText.Clear();
@@ -172,7 +182,7 @@ namespace IC_Loader_Pro.Services
 
             if (allMissingParams.Any())
             {
-                string missingParamsMessage = "The following parameters were found in the email templates but were not provided:\n\n- " +
+                string missingParamsMessage = "The following baseParameters were found in the email templates but were not provided:\n\n- " +
                                               string.Join("\n- ", allMissingParams);
 
                 FrameworkApplication.Current.Dispatcher.Invoke(() =>
@@ -443,7 +453,7 @@ namespace IC_Loader_Pro.Services
                 string runtimeComments = string.Join(" ", testResult.Comments);
 
 
-                // If we found a reason, fill in its parameters and add it as a list item.
+                // If we found a reason, fill in its baseParameters and add it as a list item.
                 if (!string.IsNullOrEmpty(failureReasonTemplate) || !string.IsNullOrEmpty(runtimeComments))
                 {
                     string finalReason = $"{failureReasonTemplate} {runtimeComments}".Trim();

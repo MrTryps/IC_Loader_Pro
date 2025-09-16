@@ -47,28 +47,25 @@ namespace IC_Loader_Pro.Services
         {
             var namedTests = new IcNamedTests(Log, PostGreTool);
 
-            // 1. Create the final root test result that will contain everything.
-            var finalResult = namedTests.returnNewTestResult("GIS_Deliverable_Root", deliverableId, TestType.Deliverable);
+            // 1. We will now use the "initialDeliverableResult" as our main result container.
+            //    This avoids creating redundant, nested structures.
+            var finalResult = initialDeliverableResult;
 
-            // 2. "Unwrap" the initial result by adding its sub-tests directly to our new final result.
-            //    This creates a flatter, easier-to-parse structure.
-            if (initialDeliverableResult?.SubTestResults != null)
+            // If for some reason the initial result is null, create a new root to prevent crashes.
+            if (finalResult == null)
             {
-                foreach (var childTest in initialDeliverableResult.SubTestResults)
-                {
-                    finalResult.AddSubordinateTestResult(childTest);
-                }
+                finalResult = namedTests.returnNewTestResult("GIS_Deliverable_Root", deliverableId, TestType.Deliverable);
             }
 
-            // 3. Create a final test to record how many shapes the user approved.
+            // 2. Add the final test for the number of shapes approved. This is the only
+            //    new information that needs to be added to the existing test tree.
             var shapesApprovedResult = namedTests.returnNewTestResult("GIS_ShapesPromoted", deliverableId, TestType.Deliverable);
             int approvedShapeCount = approvedShapes?.Count ?? 0;
             shapesApprovedResult.Passed = approvedShapeCount > 0;
-            // We still add a comment here for the Test Results window, but the email service will ignore it.
             shapesApprovedResult.AddComment($"{approvedShapeCount} shapes approved to load.");
             finalResult.AddSubordinateTestResult(shapesApprovedResult);
 
-            // 4. Add final parameters for use in the reply email.
+            // 3. Add final parameters for use in the reply email.
             finalResult.addParameter("ShapeCount", approvedShapeCount.ToString());
             finalResult.addParameter("Ic_Type", icType);
             finalResult.addParameter("prefid", prefId);

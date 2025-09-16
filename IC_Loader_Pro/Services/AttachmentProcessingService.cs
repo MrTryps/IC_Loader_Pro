@@ -187,6 +187,7 @@ namespace IC_Loader_Pro.Services
                     var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false;
                     incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
+                    incompleteTest.addParameter("filename", fileset.fileName);
                     analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
                     analysisResult.TestResult.Passed = false;
                 }
