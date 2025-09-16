@@ -11,7 +11,6 @@ using IC_Loader_Pro.Helpers;
 using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
 using IC_Loader_Pro.ViewModels;
-using IC_Loader_Pro.Views;
 using IC_Rules_2025;
 using Microsoft.Office.Interop.Outlook;
 using System;
@@ -264,45 +263,7 @@ namespace IC_Loader_Pro
                     return;
                 }
 
-                // Check for the signal from the processing service.
-                if (processingResult.RequiresNoGisFilesDecision)
-                {
-                    // Create and show our new custom dialog window.
-                    var dialogViewModel = new NoGisFilesViewModel(emailToProcess, _currentIcSetting.OutlookInboxFolderPath, outlookApp);
-                    var dialog = new NoGisFilesWindow
-                    {
-                        DataContext = dialogViewModel,
-                        Owner = FrameworkApplication.Current.MainWindow
-                    };
-
-                    dialog.ShowDialog(); // The workflow pauses here until the user makes a choice.
-
-                    // Handle the user's choice from the dialog.
-                    switch (dialog.Result)
-                    {
-                        case NoGisFilesWindow.UserChoice.Correspondence:
-                            StatusMessage = "Moving to Correspondence folder...";
-                            var (store, folder) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
-                            new OutlookService().MoveEmailToFolder(outlookApp, _currentEmail.Emailid, $"\\\\{store}\\{folder}", _currentIcSetting.OutlookCorrespondenceFolderPath);
-                            shouldAutoAdvance = true;
-                            return;
-
-                        case NoGisFilesWindow.UserChoice.Fail:
-                            var noGisTest = namedTests.returnNewTestResult("GIS_No_GIS_Attachments", _currentEmail.Emailid, IcTestResult.TestType.Deliverable);
-                            noGisTest.Passed = false;
-                            _currentEmailTestResult.AddSubordinateTestResult(noGisTest);
-                            // Fall through to the standard failure handling logic below.
-                            break;
-
-                        case NoGisFilesWindow.UserChoice.Cancel:
-                        default:
-                            // If the user closes the window, treat it as a skip.
-                            StatusMessage = "Operation canceled by user.";
-                            shouldAutoAdvance = true; // Mark to advance, but don't move the email.
-                            return;
-                    }
-                }
-
+                // --- START OF MODIFIED LOGIC ---
                 // 1. Populate ALL UI grids and lists first, regardless of the outcome.
                 if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
                 {

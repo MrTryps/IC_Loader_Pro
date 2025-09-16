@@ -102,7 +102,6 @@ namespace IC_Loader_Pro.Services
                     "GIS_No_Shapes_Found",
                     "GIS_FileReadable",
                     "GIS_MultipleValidPrefIDsOnSubjectLine",
-                    "GIS_No_GIS_Attachments",
                     "GIS_NoPrefIdInSubjectLine" // Add any other specific failures you want to report
                 };
 
