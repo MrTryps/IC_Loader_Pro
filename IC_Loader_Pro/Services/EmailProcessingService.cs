@@ -261,11 +261,17 @@ namespace IC_Loader_Pro.Services
             // If there are no valid, processable datasets AFTER the analysis (could be due to duplicates, etc.), treat as correspondence.
             if (!attachmentAnalysis.IdentifiedFileSets.Any())
             {
-                rootTestResult.Passed = false;
-                rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
-                string reason = "No valid GIS datasets found in attachments.";
-                NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
-                return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+                //rootTestResult.Passed = false;
+                //rootTestResult.Comments.Add("No valid GIS datasets found in attachments. Treating as Correspondence.");
+                //string reason = "No valid GIS datasets found in attachments.";
+                //NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookCorrespondenceFolderPath, reason);
+                //return new EmailProcessingResult { TestResult = rootTestResult, AttachmentAnalysis = attachmentAnalysis };
+                return new EmailProcessingResult
+                {
+                    TestResult = rootTestResult,
+                    AttachmentAnalysis = attachmentAnalysis,
+                    RequiresNoGisFilesDecision = true // This is the signal
+                };
             }
 
             // 3. Process Features from the (now guaranteed to be valid and non-duplicate) filesets

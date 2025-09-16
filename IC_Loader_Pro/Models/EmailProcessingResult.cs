@@ -11,6 +11,11 @@ namespace IC_Loader_Pro.Models
     {
         public IcTestResult TestResult { get; set; }
         public AttachmentAnalysisResult AttachmentAnalysis { get; set; }
-        public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();      
+        public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();
+        /// <summary>
+        /// A flag to signal to the UI that no processable GIS files were found,
+        /// requiring a user decision.
+        /// </summary>
+        public bool RequiresNoGisFilesDecision { get; set; } = false;
     }
 }
