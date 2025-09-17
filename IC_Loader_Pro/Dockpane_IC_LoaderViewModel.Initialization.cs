@@ -97,29 +97,26 @@ namespace IC_Loader_Pro
         /// </summary>
         private Task EnsureStyleFileIsLoadedAsync()
         {
-            return QueuedTask.Run(async () =>
+            return QueuedTask.Run(() =>
             {
-                const string styleFileName = "ICLoader_Symbols.stylx";
+                // Per Esri's best practices, when a style is in a project, it's referenced
+                // by its name, not its filename.
                 const string styleName = "ICLoader_Symbols";
 
-                // 1. Check if the style is already in the project
-                var styles = Project.Current.GetItems<StyleProjectItem>();
-
-
-
+                // 1. Check if a style with this name is already in the project.
                 var styleProjectItem = Project.Current.GetItems<StyleProjectItem>()
                                               .FirstOrDefault(s => s.Name.Equals(styleName, StringComparison.OrdinalIgnoreCase));
 
                 if (styleProjectItem != null)
                 {
-                    Log.RecordMessage($"Style file '{styleFileName}' is already loaded in the project.", BisLogMessageType.Note);
+                    Log.RecordMessage($"Style '{styleName}' is already loaded in the project.", BisLogMessageType.Note);
                     return; // It's already there, we're done.
                 }
 
-                // 2. If not, find the path to the .stylx file within our add-in's installation folder.
+                // 2. If not, find the full path to the .stylx file within our add-in's installation folder.
                 string addinAssemblyLocation = Assembly.GetExecutingAssembly().Location;
                 string addinFolder = Path.GetDirectoryName(addinAssemblyLocation);
-                string styleFilePath = Path.Combine(addinFolder, styleFileName);
+                string styleFilePath = Path.Combine(addinFolder, "ICLoader_Symbols.stylx");
 
                 if (!File.Exists(styleFilePath))
                 {
@@ -127,10 +124,10 @@ namespace IC_Loader_Pro
                     return;
                 }
 
-                // 3. Add the style file to the current project.
-                Log.RecordMessage($"Adding style file '{styleFileName}' from ({styleFilePath}) to the current project.", BisLogMessageType.Warning);
-                var project = Project.Current;
-                StyleHelper.AddStyle(project, styleFileName);
+                // 3. Add the style file to the current project using the correct StyleHelper class.
+                //    This is the modern, reliable method from the API guide.
+                Log.RecordMessage($"Adding style file '{styleName}' to the current project from path: {styleFilePath}", BisLogMessageType.Warning);
+                StyleHelper.AddStyle(Project.Current, styleFilePath);
             });
         }
 

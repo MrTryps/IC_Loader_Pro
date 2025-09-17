@@ -30,9 +30,9 @@
     </COMReference>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="ICLoader_Symbols.stylx">
+    <Content Include="ICLoader_Symbols.stylx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Resource>
+    </Content>
     <Content Include="Images\IC_LoadTool_16.png" />
   </ItemGroup>
   <ItemGroup>
