@@ -73,12 +73,17 @@ namespace IC_Loader_Pro
             }
             catch (Exception ex)
             {
-                string errorMessage = "A critical error occurred during add-in initialization and it cannot be loaded. Please check the log file for details.";
-                if (_log != null)
-                {
-                    _log.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
-                }
+                // Create a temporary, failsafe logger just in case the main one failed to initialize.
+                var tempLog = _log ?? new BIS_Log("IC_Loader_Pro_Failsafe");
+                string errorMessage = "A critical error occurred during IC Loader Pro initialization (likely a missing database driver). The add-in will be disabled for this session.";
+
+                // Log the detailed error for troubleshooting.
+                tempLog.RecordError($"FATAL: {errorMessage}", ex, nameof(Initialize));
+
+                // Show a single, clear message to the user.
                 ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(errorMessage, "IC Loader Pro - Initialization Error");
+
+                // Returning false tells ArcGIS Pro to gracefully disable the module without crashing.
                 return false;
             }
 

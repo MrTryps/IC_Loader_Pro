@@ -10,7 +10,7 @@
     <Subject>Framework</Subject>
   </AddInInfo>
   <modules>
-    <insertModule id="IC_Loader_Pro_Module" className="Module1" autoLoad="true" caption="Module1">
+    <insertModule id="IC_Loader_Pro_Module" className="Module1" autoLoad="false" caption="Module1">
 
       #if DEBUG
       <tabs>
