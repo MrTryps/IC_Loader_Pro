@@ -39,29 +39,29 @@ namespace IC_Loader_Pro.Services
         }
 
         public IcTestResult CompileFinalResults(
-             IcTestResult initialDeliverableResult,
-             ICollection<ShapeItem> approvedShapes,
-             string deliverableId,
-             string icType,
-             string prefId)
+      IcTestResult initialDeliverableResult,
+      ICollection<ShapeItem> approvedShapes,
+      string deliverableId,
+      string icType,
+      string prefId)
         {
             var namedTests = new IcNamedTests(Log, PostGreTool);
 
-            // 1. We will now use the "initialDeliverableResult" as our main result container.
-            //    This avoids creating redundant, nested structures.
+            // --- START OF SIMPLIFIED LOGIC ---
+            // 1. We now use the "initialDeliverableResult" (which is already a GIS_Deliverable_Root)
+            //    as our main result container. This avoids creating any duplicates.
             var finalResult = initialDeliverableResult;
 
-            // If for some reason the initial result is null, create a new root to prevent crashes.
             if (finalResult == null)
             {
                 finalResult = namedTests.returnNewTestResult("GIS_Deliverable_Root", deliverableId, TestType.Deliverable);
             }
 
-            // 2. Add the final test for the number of shapes approved. This is the only
-            //    new information that needs to be added to the existing test tree.
+            // 2. Add the final test for the number of shapes approved.
             var shapesApprovedResult = namedTests.returnNewTestResult("GIS_ShapesPromoted", deliverableId, TestType.Deliverable);
             int approvedShapeCount = approvedShapes?.Count ?? 0;
             shapesApprovedResult.Passed = approvedShapeCount > 0;
+            // We still add a comment for the Test Results window, but the email service will ignore it.
             shapesApprovedResult.AddComment($"{approvedShapeCount} shapes approved to load.");
             finalResult.AddSubordinateTestResult(shapesApprovedResult);
 
@@ -72,7 +72,6 @@ namespace IC_Loader_Pro.Services
 
             return finalResult;
         }
-
 
         /// <summary>
         /// Compiles all test results from the processing workflow into a single, final,

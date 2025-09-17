@@ -147,6 +147,7 @@ namespace IC_Loader_Pro.Services
             {
                 subjectTemplateText = rootRule.PassSubject?.ReplacementText ?? "Submission Processed for {PREFID}";
                 bodyTemplateText += rootRule.PassMessage?.ReplacementText ?? "<p>Your submission has been processed successfully.</p>";
+                outgoingEmail.AddToClosingText("{Template_GIS_Standard_Closing}");
             }
 
             if (finalCumulativeAction.IncludeSubmittedFiles && submittedFiles != null)

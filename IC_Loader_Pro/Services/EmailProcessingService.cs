@@ -189,7 +189,7 @@ namespace IC_Loader_Pro.Services
         {
             _log.RecordMessage($"Starting to process email with ID: {emailToProcess.Emailid}", BisLogMessageType.Note);
 
-            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Root_Email_Load"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
+            var rootTestResult = new IcTestResult(_namedTests.returnTestRule("GIS_Deliverable_Root"), "-1", IcTestResult.TestType.Deliverable, _log, null, _namedTests);
             var currentIcSetting = _rules.ReturnIcGisTypeSettings(selectedIcType);
 
             var subjectLineTest = _namedTests.returnNewTestResult("GIS_Subjectline_Tests", "-1", IcTestResult.TestType.Deliverable);

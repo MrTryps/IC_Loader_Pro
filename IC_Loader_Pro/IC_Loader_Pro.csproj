@@ -13,6 +13,7 @@
     <FileVersion>2.0.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="ICLoader_Symbols.stylx" />
     <None Remove="Images\IC_LoadTool_16.png" />
     <None Remove="Images\IC_LoadTool_32.png" />
     <None Remove="Images\IC_LoadTool_Prj.png" />
@@ -29,6 +30,9 @@
     </COMReference>
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="ICLoader_Symbols.stylx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Resource>
     <Content Include="Images\IC_LoadTool_16.png" />
   </ItemGroup>
   <ItemGroup>
@@ -126,6 +130,6 @@
     <ProjectReference Include="..\..\..\BIS_Tools_2025\IC_Rules_2025\IC_Rules_2025\IC_Rules_2025.csproj">
       <Private>True</Private>
     </ProjectReference>
-  </ItemGroup>
+  </ItemGroup> 
   <Import Project="C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets" Condition="Exists('C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets') AND !Exists('Esri.ArcGISPro.Extensions.targets')" />
 </Project>

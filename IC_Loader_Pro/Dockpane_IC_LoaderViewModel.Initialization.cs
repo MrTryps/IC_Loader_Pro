@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
@@ -63,6 +64,8 @@ namespace IC_Loader_Pro
 
             try
             {
+                await EnsureStyleFileIsLoadedAsync();
+                var styles = Project.Current.GetItems<StyleProjectItem>();
                 Map activeMap = await GetAndPrepareMapAsync();
                 if (activeMap == null)
                 {
@@ -86,6 +89,49 @@ namespace IC_Loader_Pro
                 Log.RecordError("A fatal error occurred during map and layer initialization.", ex, nameof(LoadAndInitializeAsync));
                 StatusMessage = "An error occurred during initialization.";
             }
+        }
+
+        /// <summary>
+        /// Checks if the add-in's custom style file is part of the current project.
+        /// If not, it finds the .stylx file in the add-in's installation directory and adds it.
+        /// </summary>
+        private Task EnsureStyleFileIsLoadedAsync()
+        {
+            return QueuedTask.Run(async () =>
+            {
+                const string styleFileName = "ICLoader_Symbols.stylx";
+                const string styleName = "ICLoader_Symbols";
+
+                // 1. Check if the style is already in the project
+                var styles = Project.Current.GetItems<StyleProjectItem>();
+
+
+
+                var styleProjectItem = Project.Current.GetItems<StyleProjectItem>()
+                                              .FirstOrDefault(s => s.Name.Equals(styleName, StringComparison.OrdinalIgnoreCase));
+
+                if (styleProjectItem != null)
+                {
+                    Log.RecordMessage($"Style file '{styleFileName}' is already loaded in the project.", BisLogMessageType.Note);
+                    return; // It's already there, we're done.
+                }
+
+                // 2. If not, find the path to the .stylx file within our add-in's installation folder.
+                string addinAssemblyLocation = Assembly.GetExecutingAssembly().Location;
+                string addinFolder = Path.GetDirectoryName(addinAssemblyLocation);
+                string styleFilePath = Path.Combine(addinFolder, styleFileName);
+
+                if (!File.Exists(styleFilePath))
+                {
+                    Log.RecordError($"Could not find the style file at the expected location: {styleFilePath}", null, "EnsureStyleFileIsLoadedAsync");
+                    return;
+                }
+
+                // 3. Add the style file to the current project.
+                Log.RecordMessage($"Adding style file '{styleFileName}' from ({styleFilePath}) to the current project.", BisLogMessageType.Warning);
+                var project = Project.Current;
+                StyleHelper.AddStyle(project, styleFileName);
+            });
         }
 
         /// <summary>
