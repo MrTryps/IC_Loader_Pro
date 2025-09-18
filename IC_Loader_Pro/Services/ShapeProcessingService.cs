@@ -440,7 +440,7 @@ namespace IC_Loader_Pro.Services
 
         // In IC_Loader_Pro/Services/ShapeProcessingService.cs
 
-        public async Task CopyShapeToProposedAsync(Geometry shape, string newShapeId, string icType)
+        public async Task<bool> CopyShapeToProposedAsync(Geometry shape, string newShapeId, string icType)
         {
             const string methodName = "CopyShapeToProposedAsync";
 
@@ -448,7 +448,7 @@ namespace IC_Loader_Pro.Services
             if (proposedFcRule == null)
             {
                 Log.RecordError("Proposed feature class is not configured in the rules.", null, methodName);
-                return;
+                return false;
             }
 
             bool success = await QueuedTask.Run(async () =>
@@ -499,6 +499,7 @@ namespace IC_Loader_Pro.Services
                     $"Failed to save the new shape '{newShapeId}' to the geodatabase. Please check the logs for details.",
                     "Save Error");
             }
+            return success;
         }
 
 

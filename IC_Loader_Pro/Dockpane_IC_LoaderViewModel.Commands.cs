@@ -1,6 +1,9 @@
 ﻿using ArcGIS.Core.CIM;
+using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Core;
+using ArcGIS.Desktop.Core.Geoprocessing;
+using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
@@ -10,10 +13,12 @@ using ArcGIS.Desktop.Mapping.Events;
 using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
 using IC_Loader_Pro.Services;
+using IC_Loader_Pro.ViewModels;
 using IC_Rules_2025;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -57,6 +62,7 @@ namespace IC_Loader_Pro
         public ICommand CreateNewIcDeliverableCommand { get; private set; }
         public ICommand OpenConnectionTesterCommand { get; private set; }
         public ICommand OpenEmailInOutlookCommand { get; private set; }
+        public ICommand ProcessManualLayerCommand { get; private set; }
 
         #endregion
 
@@ -368,6 +374,7 @@ namespace IC_Loader_Pro
         //    await ProcessNextEmail();
         //}
 
+
         private async Task OnSave()
         {
             if (_currentEmailTestResult == null || !_selectedShapes.Any())
@@ -494,6 +501,7 @@ namespace IC_Loader_Pro
         //    }
         //    await ProcessNextEmail();
         //}
+
         private async Task OnReject()
         {
             if (SelectedIcType == null || string.IsNullOrEmpty(CurrentEmailId))
@@ -519,6 +527,89 @@ namespace IC_Loader_Pro
             await FinalizeSubmissionAsync(finalTestResult);
             SelectedIcType.FailedCount++;
         }
+
+
+        private async Task OnProcessManualLayerAsync()
+        {
+            Log.RecordMessage("Processing features from 'manually_added' layer.", BisLogMessageType.Note);
+            IsUIEnabled = false;
+            StatusMessage = "Processing manual features...";
+
+            try
+            {
+                List<ShapeItem> manualShapes = new List<ShapeItem>();
+                string sourceFileName = "manually_added";
+
+                // This must run on the main thread
+                await QueuedTask.Run(() =>
+                {
+                    if (_manualAddLayer == null)
+                    {
+                        Log.RecordError("The 'manually_added' layer could not be found in the map.", null, "OnProcessManualLayerAsync");
+                        return;
+                    }
+
+                    using (var featureClass = _manualAddLayer.GetFeatureClass())
+                    using (var cursor = featureClass.Search(null, false))
+                    {
+                        while (cursor.MoveNext())
+                        {
+                            using (var feature = cursor.Current as Feature)
+                            {
+                                if (feature?.GetShape() is Polygon polygon)
+                                {
+                                    var shapeItem = new ShapeItem
+                                    {
+                                        Geometry = polygon,
+                                        SourceFile = sourceFileName,
+                                        ShapeReferenceId = (int)feature.GetObjectID(),
+                                        IsValid = true,
+                                        Status = "Manual Add",
+                                        IsAutoSelected = true // Assume manually added shapes are always intended for use
+                                    };
+                                    manualShapes.Add(shapeItem);
+                                }
+                            }
+                        }
+                    }
+                });
+
+                if (!manualShapes.Any())
+                {
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("No polygon features found in the 'manually_added' layer.", "No Features");
+                    return;
+                }
+
+                // Create a new "fileset" in the UI to represent this manual submission
+                var manualFileSet = new fileset
+                {
+                    fileName = sourceFileName,
+                    filesetType = "shapefile", // Treat it as a shapefile for processing
+                    validSet = true,
+                    path = "manual" // A special path to identify it later
+                };
+                var fileSetVM = new FileSetViewModel(manualFileSet);
+                _foundFileSets.Add(fileSetVM);
+                _currentAttachmentAnalysis.IdentifiedFileSets.Add(manualFileSet);
+
+                // Add the new shapes to the master list and refresh the UI
+                _allProcessedShapes.AddRange(manualShapes);
+                UpdateFileSetCounts();
+                await RefreshShapeListsAndMap();
+
+                StatusMessage = $"Added {manualShapes.Count} features from the manual layer.";
+            }
+            catch (Exception ex)
+            {
+                Log.RecordError("An error occurred while processing the manual layer.", ex, nameof(OnProcessManualLayerAsync));
+                StatusMessage = "Error processing manual layer.";
+            }
+            finally
+            {
+                IsUIEnabled = true;
+            }
+        }
+
 
         private async Task OnShowNotes()
         {
@@ -845,6 +936,7 @@ namespace IC_Loader_Pro
         private async Task FinalizeSubmissionAsync(IcTestResult finalTestResult)
         {
             IsEmailActionEnabled = false;
+            bool saveSucceeded = true;
             StatusMessage = "Finalizing submission...";
             Log.RecordMessage("Finalization process started.", BisLogMessageType.Note);
 
@@ -893,6 +985,7 @@ namespace IC_Loader_Pro
                         if (string.IsNullOrEmpty(submissionId))
                         {
                             Log.RecordError($"Could not find a submission ID for shape from file '{shapeToSave.SourceFile}'. Skipping shape record.", null, nameof(OnSave));
+                            saveSucceeded = false;
                             continue;
                         }
 
@@ -902,6 +995,7 @@ namespace IC_Loader_Pro
                         if (!recordCreated)
                         {
                             Log.RecordError($"Aborting processing for this shape because its info record could not be created.", null, nameof(OnSave));
+                            saveSucceeded = false;
                             continue;
                         }
 
@@ -925,23 +1019,96 @@ namespace IC_Loader_Pro
                         await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "CENTROID_Y", shapeToSave.Geometry.Extent.Center.Y, SelectedIcType.Name);
                         await shapeService.UpdateShapeInfoFieldAsync(newShapeId, "SITE_DIST", shapeToSave.DistanceFromSite, SelectedIcType.Name);
 
-                        await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
+                        bool copySuccess = await shapeService.CopyShapeToProposedAsync(shapeToSave.Geometry, newShapeId, SelectedIcType.Name);
+                        if (!copySuccess)
+                        {
+                            saveSucceeded = false;
+                            break;
+                        }
                     }
                 }
 
-                // 6. Move the original submission files to the final network archive location.
+
+                // 6. Check our success flag. Only proceed if ALL shapes were saved correctly.
+                if (!saveSucceeded)
+                {
+                    StatusMessage = "Save process halted due to an error copying a shape.";
+                    // We do NOT proceed. The user can review the log and try saving again later.
+                    // We should consider offering to roll back the database changes here in a future version.
+                    return;
+                }
+
+                // 7. Move the original submission files to the final network archive location.
                 //    This now happens for both passed and failed submissions to ensure a record is kept.
                 if (_currentAttachmentAnalysis != null && _currentAttachmentAnalysis.IdentifiedFileSets != null)
                 {
                     StatusMessage = "Archiving submission files...";
-                    await submissionService.MoveAllSubmissionsAsync(
-                        newDelId,
-                        _currentAttachmentAnalysis.IdentifiedFileSets,
-                        submissionIdMap,
-                        _currentIcSetting.AsSubmittedPath);
+                    // A. Archive the files that came from the email
+                    var emailFilesets = _currentAttachmentAnalysis.IdentifiedFileSets.Where(fs => fs.path != "manual").ToList();
+                    if (emailFilesets.Any())
+                    {
+                        await submissionService.MoveAllSubmissionsAsync(
+                            newDelId,
+                            emailFilesets,
+                            submissionIdMap,
+                            _currentIcSetting.AsSubmittedPath);
+                    }
+
+                    // B. Export and archive the features from the "manually_added" layer
+                    var manualFileset = _currentAttachmentAnalysis.IdentifiedFileSets.FirstOrDefault(fs => fs.path == "manual");
+                    if (manualFileset != null && _manualAddLayer != null)
+                    {
+                        string submissionId = submissionIdMap.GetValueOrDefault(manualFileset.fileName);
+                        if (!string.IsNullOrEmpty(submissionId))
+                        {
+                            string deliverableFolder = Path.Combine(_currentIcSetting.AsSubmittedPath, newDelId);
+                            string submissionFolder = Path.Combine(deliverableFolder, submissionId);
+                            Directory.CreateDirectory(submissionFolder);
+                            string exportPath = Path.Combine(submissionFolder, "manually_added.shp");
+
+                            var parameters = Geoprocessing.MakeValueArray(_manualAddLayer, exportPath);
+                            var gpResult = await Geoprocessing.ExecuteToolAsync("management.CopyFeatures", parameters);
+
+                            if (!gpResult.IsFailed)
+                            {
+                                Log.RecordMessage($"Successfully exported manual features to {exportPath}", BisLogMessageType.Note);
+                                // Clear the layer after successful export and save
+                                await QueuedTask.Run(() => {
+                                    var editOp = new EditOperation() { Name = "Clear Manual Layer" };
+
+                                    // 1. Get a cursor for all features in the layer's table.
+                                    using (var cursor = _manualAddLayer.GetTable().Search(null, false))
+                                    {
+                                        // 2. Iterate through the cursor and collect all the Object IDs.
+                                        var oids = new List<long>();
+                                        while (cursor.MoveNext())
+                                        {
+                                            using (var row = cursor.Current)
+                                            {
+                                                oids.Add(row.GetObjectID());
+                                            }
+                                        }
+
+                                        // 3. Queue the deletion of those specific OIDs.
+                                        if (oids.Any())
+                                        {
+                                            editOp.Delete(_manualAddLayer, oids);
+                                        }
+                                    }
+
+                                    // 4. Execute the operation.
+                                    editOp.Execute();
+                                });
+                            }
+                            else
+                            {
+                                Log.RecordError($"Failed to export manual features. Error: {string.Join(";", gpResult.Messages.Select(m => m.Text))}", null, "FinalizeSubmissionAsync");
+                            }
+                        }
+                    }
                 }
 
-                // 7. Update database records with final status
+                // 8. Update database records with final status
                 foreach (var subId in submissionIdMap.Values)
                 {
                     await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
@@ -950,7 +1117,7 @@ namespace IC_Loader_Pro
                 string finalValidity = finalTestResult.Passed ? "Pass" : "Fail";
                 await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, finalValidity);
 
-                // 8. Save test results and send notification
+                // 9. Save test results and send notification
                 await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
 
                 // **MODIFIED**: Pass the list of all submitted files to the email service
@@ -971,7 +1138,7 @@ namespace IC_Loader_Pro
                     return; // ABORT the finalization
                 }
 
-                // 8. Move the processed email
+                // 10. Move the processed email
                 var (store, folder) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
                 outlookService.MoveEmailToFolder(outlookApp, _currentEmail.Emailid, $"\\\\{store}\\{folder}", _currentIcSetting.OutlookProcessedFolderPath);
 
@@ -992,7 +1159,7 @@ namespace IC_Loader_Pro
                 }
             }
 
-            // 9. Advance to the next email
+            // 11. Advance to the next email
             if (_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) && emailsToProcess.Any())
             {
                 emailsToProcess.RemoveAt(0);

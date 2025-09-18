@@ -208,6 +208,7 @@ namespace IC_Loader_Pro
         {
             _isInTestMode = Module1.IsInTestMode;
 
+
             // Create the public, read-only collection that the UI will bind to
             _readOnlyListOfQueues = new ReadOnlyObservableCollection<ICQueueSummary>(_ListOfIcEmailTypeSummaries);
             _readOnlyFoundFileSets = new ReadOnlyObservableCollection<FileSetViewModel>(_foundFileSets);
@@ -254,6 +255,7 @@ namespace IC_Loader_Pro
             CreateNewIcDeliverableCommand = new RelayCommand(async () => await OnCreateNewIcDeliverableAsync(), () => IsUIEnabled);
             OpenConnectionTesterCommand = new RelayCommand(OnOpenConnectionTester, () => IsUIEnabled);
             OpenEmailInOutlookCommand = new RelayCommand(async () => await OnOpenEmailInOutlook(), () => _currentEmail != null);
+            ProcessManualLayerCommand = new RelayCommand(async () => await OnProcessManualLayerAsync(), () => IsEmailActionEnabled);
         }
         #endregion
      

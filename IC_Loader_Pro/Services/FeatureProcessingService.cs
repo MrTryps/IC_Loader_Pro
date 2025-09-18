@@ -114,7 +114,30 @@ namespace IC_Loader_Pro.Services
 
             var geometry = shapeToValidate.Geometry;
 
-            // 1: Check and Reproject Spatial Reference ---
+            // 1. Check for and remove Z and M values.
+            if (geometry.HasZ || geometry.HasM)
+            {
+                var repairTest = _namedTests.returnNewTestResult("GIS_Shape_Repair", shapeToValidate.SourceFile, IcTestResult.TestType.Shape);
+                repairTest.Passed = true;
+
+                // Use PolygonBuilderEx to create a new 2D polygon from the ZM coordinates.
+                var flatPolygon = new PolygonBuilderEx(geometry.SpatialReference)
+                {
+                    HasZ = false,
+                    HasM = false
+                };
+                flatPolygon.AddParts(geometry.Parts);
+
+                geometry = flatPolygon.ToGeometry(); // Use the new flat polygon for all subsequent checks.
+                shapeToValidate.Geometry = geometry as Polygon; // Update the shapeItem
+                shapeToValidate.Status = "Repaired (ZM Removed)";
+                repairTest.AddComment($"Shape with original ID {shapeToValidate.ShapeReferenceId} was a Polygon ZM and has been converted to a 2D Polygon.");
+                parentTestResult.AddSubordinateTestResult(repairTest);
+            }
+
+
+
+            // 2: Check and Reproject Spatial Reference ---
             var requiredSr = SpatialReferenceBuilder.CreateSpatialReference(RequiredWkid);
             if (geometry.SpatialReference == null || !geometry.SpatialReference.IsEqual(requiredSr))
             {
@@ -147,7 +170,7 @@ namespace IC_Loader_Pro.Services
                 }
             }
 
-            // 2. Check if the shape is a polygon
+            // 3. Check if the shape is a polygon
             if (geometry.GeometryType != GeometryType.Polygon)
             {
                 shapeToValidate.IsValid = false;
@@ -156,7 +179,7 @@ namespace IC_Loader_Pro.Services
                 return;
             }
 
-            // 3. Check if the geometry is empty
+            // 4. Check if the geometry is empty
             if (geometry.IsEmpty)
             {
                 shapeToValidate.IsValid = false;
@@ -165,7 +188,7 @@ namespace IC_Loader_Pro.Services
                 return;
             }            
 
-            // 4. Check for self-intersection and simplify if necessary (the modern way)
+            // 5. Check for self-intersection and simplify if necessary (the modern way)
             // The GeometryEngine's SimplifyAsFeature method can fix many common geometry errors.
             if (!GeometryEngine.Instance.IsSimpleAsFeature(geometry))
             {
@@ -178,7 +201,7 @@ namespace IC_Loader_Pro.Services
                 shapeToValidate.Status = "Repaired (Simplified)";
             }
 
-            // 4. Check for inverted polygons. If area is negative, the orientation is inverted and reverse the orientation.
+            // 6. Check for inverted polygons. If area is negative, the orientation is inverted and reverse the orientation.
             double area = (geometry as Polygon).Area;
             if (area < 0)
             {
@@ -196,7 +219,7 @@ namespace IC_Loader_Pro.Services
                 area = (geometry as Polygon).Area;
             }
 
-            // 6. Check the area against the minimum threshold
+            // 7. Check the area against the minimum threshold
             shapeToValidate.Area = area;
             if (Math.Abs(area) < geometryRules.Min_Area)
             {
@@ -206,7 +229,7 @@ namespace IC_Loader_Pro.Services
                 recordShapeCheckFailure("Area Below Minimum");
             }
 
-            // 7.  Check if the shape is within the allowed extent ---
+            // 8.  Check if the shape is within the allowed extent ---
             var extent = geometry.Extent;
             if (extent.XMin < geometryRules.X_Min ||
                 extent.XMax > geometryRules.X_Max ||
@@ -219,7 +242,7 @@ namespace IC_Loader_Pro.Services
                 recordShapeCheckFailure("Outside Allowable Extent");
             }
 
-            // 8. Check the distance from the site, if a site location was provided.
+            // 9. Check the distance from the site, if a site location was provided.
             if (siteLocation != null && shapeToValidate.Geometry != null)
             {
                 // Use the GeometryEngine to calculate the geodetic distance.
