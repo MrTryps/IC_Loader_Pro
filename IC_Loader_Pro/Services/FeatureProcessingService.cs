@@ -372,6 +372,8 @@ namespace IC_Loader_Pro.Services
             var nameFilters = _rules.ReturnIcGisTypeSettings(icType)?.FeatureNameFilters;
             var fieldsToMine = _rules.ReturnIcGisTypeSettings(icType).FeatureFields.Where(f => f.DisplayInPreview).Select(f => f.Fieldname).ToList();
             var featureClassDef = featureClass.GetDefinition();
+
+            // Determine if we are reading from a polyline layer (common in DWG files)
             bool isPolylineSource = featureClassDef.GetShapeType() == GeometryType.Polyline;
 
             using (var cursor = featureClass.Search(null, false))
@@ -381,21 +383,44 @@ namespace IC_Loader_Pro.Services
                     if (cursor.Current is not Feature feature) continue;
 
                     Polygon polygon = null;
-                    bool wasConverted = false;
+                    bool wasConvertedFromPolyline = false;
 
+                    // --- START OF POLYLINE CONVERSION LOGIC ---
                     if (isPolylineSource)
                     {
-                        if (feature.GetShape() is Polyline polyline && polyline.PointCount > 0 && polyline.Points.First().IsEqual(polyline.Points.Last()))
+                        if (feature.GetShape() is Polyline polyline && polyline.PointCount > 3)
                         {
-                            try
+                            var startPoint = polyline.Points.First();
+                            var endPoint = polyline.Points.Last();
+
+                            double closingDistance = GeometryEngine.Instance.Distance(startPoint, endPoint);
+                            const double closingTolerance = 1.0; // 1 foot
+
+                            if (closingDistance <= closingTolerance)
                             {
-                                polygon = new PolygonBuilderEx(polyline).ToGeometry();
-                                wasConverted = true;
-                            }
-                            catch (Exception ex)
-                            {
-                                _log.RecordError($"Failed to convert closed polyline with ID {feature.GetObjectID()}.", ex, "ExtractShapesFromFeatureClass");
-                                continue;
+                                try
+                                {
+                                    // If the polyline is nearly closed but not exactly, we must rebuild it
+                                    // to ensure it is perfectly closed before converting to a polygon.
+                                    if (closingDistance > 0)
+                                    {
+                                        // 1. Get all the points from the original polyline.
+                                        var allPoints = polyline.Points.ToList();
+                                        // 2. Add the start point to the end of the list to close the loop.
+                                        allPoints.Add(startPoint);
+                                        // 3. Create a new, perfectly closed polyline from the updated point list.
+                                        polyline = new PolylineBuilderEx(allPoints.Select(p => new Coordinate2D(p.X, p.Y)), polyline.SpatialReference).ToGeometry();
+                                    }
+
+                                    // Now convert the perfectly closed polyline to a polygon.
+                                    polygon = new PolygonBuilderEx(polyline).ToGeometry();
+                                    wasConvertedFromPolyline = true;
+                                }
+                                catch (Exception ex)
+                                {
+                                    _log.RecordError($"Failed to convert nearly-closed polyline with ID {feature.GetObjectID()} from {sourceFileSet.fileName}.", ex, "ExtractShapesFromFeatureClass");
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -404,23 +429,21 @@ namespace IC_Loader_Pro.Services
                         polygon = feature.GetShape() as Polygon;
                     }
 
-                    if (polygon == null) continue;
+                    if (polygon == null) continue; // If we couldn't get a valid polygon, skip to the next feature.
 
                     var shapeItem = new ShapeItem
                     {
                         Geometry = polygon,
                         SourceFile = sourceFileSet.fileName,
                         ShapeReferenceId = (int)feature.GetObjectID(),
-                        IsValid = true,
-                        Status = wasConverted ? "Repaired (Converted)" : "Pending Validation",
-                        ShapeType = wasConverted ? "Polygon (from Polyline)" : "Polygon"
+                        IsValid = true, // It will be validated in the next step
+                        Status = wasConvertedFromPolyline ? "Repaired (Converted)" : "Pending Validation",
+                        ShapeType = wasConvertedFromPolyline ? "Polygon (from Polyline)" : "Polygon"
                     };
 
-                    // --- THIS IS THE NEW, COMPLETE LOGIC FOR THE DESCRIPTION ---
                     if (nameFilters != null)
                     {
                         bool descriptionSet = false;
-                        // First, check for an auto-select match
                         foreach (var filter in nameFilters)
                         {
                             string fieldName = filter.Key;
@@ -438,7 +461,6 @@ namespace IC_Loader_Pro.Services
                             }
                         }
 
-                        // If not auto-selected, find the first available filter field to use as a description
                         if (!descriptionSet)
                         {
                             foreach (string fieldName in nameFilters.Keys)
@@ -450,15 +472,13 @@ namespace IC_Loader_Pro.Services
                                     if (!string.IsNullOrEmpty(attributeValue))
                                     {
                                         shapeItem.Description = attributeValue;
-                                        break; // Stop after finding the first one
+                                        break;
                                     }
                                 }
                             }
                         }
                     }
-                    // --- END OF NEW LOGIC ---
 
-                    // Get other display attributes
                     foreach (string fieldName in fieldsToMine)
                     {
                         int fieldIndex = feature.FindField(fieldName);
