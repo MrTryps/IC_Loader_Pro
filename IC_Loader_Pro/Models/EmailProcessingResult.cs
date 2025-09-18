@@ -11,6 +11,7 @@ namespace IC_Loader_Pro.Models
     {
         public IcTestResult TestResult { get; set; }
         public AttachmentAnalysisResult AttachmentAnalysis { get; set; }
-        public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();      
+        public List<ShapeItem> ShapeItems { get; set; } = new List<ShapeItem>();
+        public bool RequiresNoGisFilesDecision { get; set; } = false;
     }
 }
