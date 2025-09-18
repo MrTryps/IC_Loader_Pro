@@ -41,6 +41,9 @@ namespace IC_Loader_Pro
         {
             // --- Step 1: Initial UI update ---
             //Log.RecordMessage("Step 1: Calling RunOnUIThread to disable UI.", BisLogMessageType.Note);
+            // Reset the UI and clear any current deliverable state before refreshing the queues.
+            await ResetStateAsync();
+
             await RunOnUIThread(() =>
             {
                 IsUIEnabled = false;
@@ -204,6 +207,7 @@ namespace IC_Loader_Pro
             {
                 CurrentEmailSubject = "Queue is empty.";
                 StatusMessage = $"Queue '{SelectedIcType?.Name}' is empty.";
+                await ResetStateAsync();
                 return;
             }
 

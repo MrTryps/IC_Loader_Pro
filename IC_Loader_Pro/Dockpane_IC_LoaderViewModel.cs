@@ -647,7 +647,43 @@ namespace IC_Loader_Pro
             await ZoomToAllAndSiteAsync();
         }
 
+        private async Task ResetStateAsync()
+        {
+            // Clean up temporary files from the last run
+            await PerformCleanupAsync();
+            // Remove any layers that were manually loaded
+            await ClearManuallyLoadedLayersAsync();
 
+            // Reset all backing fields for the current deliverable
+            _currentEmail = null;
+            _currentClassification = null;
+            _currentEmailTestResult = null;
+            _currentAttachmentAnalysis = null;
+            _currentSiteLocation = null;
+
+            // Clear all the shape and fileset collections
+            _allProcessedShapes.Clear();
+            _foundFileSets.Clear();
+
+            // Use the UI thread to clear collections bound to the UI
+            await RunOnUIThread(() =>
+            {
+                _shapesToReview.Clear();
+                _selectedShapes.Clear();
+            });
+
+            // Reset all the properties displayed in the UI
+            CurrentEmailId = null;
+            CurrentEmailSubject = "No email selected";
+            CurrentPrefId = "N/A";
+            CurrentAltId = "N/A";
+            CurrentActivityNum = "N/A";
+            CurrentDelId = "Pending";
+            IsEmailActionEnabled = false;
+
+            // Redraw the map to clear any old graphics
+            await RedrawAllShapesOnMapAsync();
+        }
 
         /// <summary>
         /// Zooms the active map view to the full extent of a collection of geometries.
@@ -1216,7 +1252,7 @@ namespace IC_Loader_Pro
 
             try
             {
-                _isRefreshingShapes = true;
+               // _isRefreshingShapes = true;
 
                 // Create a fileset object representing the source data
                 var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory_NewMethod(Path.GetDirectoryName(selectedItem.Path),"",false)
@@ -1288,6 +1324,9 @@ namespace IC_Loader_Pro
 
         private async Task OnCreateNewIcDeliverableAsync()
         {
+            // 1. Reset all state from any previous deliverable.
+            await ResetStateAsync();
+
             // 1. Create an instance of the new window and its ViewModel
             var viewModel = new ViewModels.CreateIcDeliverableViewModel();
             var window = new CreateIcDeliverableWindow
@@ -1322,7 +1361,7 @@ namespace IC_Loader_Pro
 
             try
             {
-                _isRefreshingShapes = true;
+               // _isRefreshingShapes = true;
 
                 var sourceFileSet = Module1.IcRules.ReturnFileSetsFromDirectory_NewMethod(Path.GetDirectoryName(selectedFilePath), "", false)
                                         .FirstOrDefault(fs => fs.fileName.Equals(Path.GetFileNameWithoutExtension(selectedFilePath), StringComparison.OrdinalIgnoreCase));
