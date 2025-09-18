@@ -1345,6 +1345,7 @@ namespace IC_Loader_Pro
             string selectedIcType = viewModel.SelectedIcType;
             string prefId = viewModel.PrefId;
             string selectedFilePath = viewModel.GisFilePath;
+            CurrentPrefId = prefId;
 
             Log.RecordMessage($"User initiated new deliverable. Type: {selectedIcType}, PrefID: {prefId}, File: {selectedFilePath}", BisLogMessageType.Note);
 
@@ -1410,6 +1411,9 @@ namespace IC_Loader_Pro
                 }
                 UpdateFileSetCounts();
                 await RefreshShapeListsAndMap();
+
+                IsEmailActionEnabled = true;
+                (SaveCommand as RelayCommand)?.RaiseCanExecuteChanged();
             }
             catch (Exception ex)
             {
