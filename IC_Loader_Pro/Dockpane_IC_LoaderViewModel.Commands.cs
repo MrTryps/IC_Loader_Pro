@@ -929,7 +929,19 @@ namespace IC_Loader_Pro
                     }
                 }
 
-                // 6. Update database records with final status
+                // 6. Move the original submission files to the final network archive location.
+                //    This now happens for both passed and failed submissions to ensure a record is kept.
+                if (_currentAttachmentAnalysis != null && _currentAttachmentAnalysis.IdentifiedFileSets != null)
+                {
+                    StatusMessage = "Archiving submission files...";
+                    await submissionService.MoveAllSubmissionsAsync(
+                        newDelId,
+                        _currentAttachmentAnalysis.IdentifiedFileSets,
+                        submissionIdMap,
+                        _currentIcSetting.AsSubmittedPath);
+                }
+
+                // 7. Update database records with final status
                 foreach (var subId in submissionIdMap.Values)
                 {
                     await submissionService.UpdateSubmissionCountsAsync(subId, goodCounts.GetValueOrDefault(subId, 0), dupCounts.GetValueOrDefault(subId, 0));
@@ -938,7 +950,7 @@ namespace IC_Loader_Pro
                 string finalValidity = finalTestResult.Passed ? "Pass" : "Fail";
                 await deliverableService.UpdateDeliverableStatusAsync(newDelId, finalStatus, finalValidity);
 
-                // 7. Save test results and send notification
+                // 8. Save test results and send notification
                 await testResultService.SaveTestResultsAsync(finalTestResult, newDelId);
 
                 // **MODIFIED**: Pass the list of all submitted files to the email service

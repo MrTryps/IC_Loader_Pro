@@ -80,31 +80,39 @@ namespace IC_Loader_Pro.Services
         }
 
         /// <summary>
-        /// Moves all files for the processed submissions to a final network location.
+        /// Moves all files for the processed submissions to a final network location,
+        /// organizing them under a parent folder named after the deliverable ID.
         /// </summary>
-        public async Task MoveAllSubmissionsAsync(List<fileset> filesets, Dictionary<string, string> submissionIdMap, string asSubmittedRootPath)
+        public async Task MoveAllSubmissionsAsync(string deliverableId, List<fileset> filesets, Dictionary<string, string> submissionIdMap, string asSubmittedRootPath)
         {
-            if (filesets == null) return;
+            if (filesets == null || string.IsNullOrEmpty(deliverableId)) return;
+
+            // --- START OF MODIFIED LOGIC ---
+            // Create a single parent folder for the entire deliverable.
+            string deliverableDestinationFolder = Path.Combine(asSubmittedRootPath, deliverableId);
+            Directory.CreateDirectory(deliverableDestinationFolder);
+            // --- END OF MODIFIED LOGIC ---
 
             foreach (var fs in filesets)
             {
                 if (submissionIdMap.TryGetValue(fs.fileName, out string submissionId))
                 {
-                    string destinationFolder = Path.Combine(asSubmittedRootPath, submissionId);
-                    Directory.CreateDirectory(destinationFolder);
+                    // Each fileset gets its own subfolder within the main deliverable folder.
+                    string submissionDestinationFolder = Path.Combine(deliverableDestinationFolder, submissionId);
+                    Directory.CreateDirectory(submissionDestinationFolder);
 
                     foreach (var ext in fs.extensions)
                     {
                         string sourceFile = Path.Combine(fs.path, $"{fs.fileName}.{ext}");
-                        string destFile = Path.Combine(destinationFolder, $"{fs.fileName}.{ext}");
+                        string destFile = Path.Combine(submissionDestinationFolder, $"{fs.fileName}.{ext}");
                         if (File.Exists(sourceFile))
                         {
                             File.Copy(sourceFile, destFile, true);
                         }
                     }
-                    Log.RecordMessage($"Moved files for submission '{submissionId}' to '{destinationFolder}'.", BisLogMessageType.Note);
+                    Log.RecordMessage($"Moved files for submission '{submissionId}' to '{submissionDestinationFolder}'.", BisLogMessageType.Note);
 
-                    var paramDict = new Dictionary<string, object> { { "Path", destinationFolder }, { "SubId", submissionId } };
+                    var paramDict = new Dictionary<string, object> { { "Path", submissionDestinationFolder }, { "SubId", submissionId } };
                     await Task.Run(() => PostGreTool.ExecuteNamedQuery("Update_GIS_Sub_Path", paramDict));
                     await UpdateSubmissionStatusAsync(submissionId, "Moved to Network");
                 }

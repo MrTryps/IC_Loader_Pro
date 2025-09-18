@@ -6,7 +6,7 @@
         xmlns:viewModels="clr-namespace:IC_Loader_Pro.ViewModels"
         xmlns:localConverters="clr-namespace:IC_Loader_Pro.ValueConverters"
         mc:Ignorable="d"
-        Title="Preview and Edit Email" Height="600" Width="800"
+        Title="Preview and Edit Email" Height="750" Width="800"
         WindowStartupLocation="CenterOwner"
         >
     <Window.Resources>

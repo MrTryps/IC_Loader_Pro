@@ -960,26 +960,38 @@ namespace IC_Loader_Pro
                     {
                         var files = Directory.GetFiles(_pathForNextCleanup, fs.fileName + "." + extension, SearchOption.AllDirectories);
                         if (files.Any()) filePath = files.First();
-                        else return;
+                        else
+                        {
+                            Log.RecordError($"Could not find the file to load: {filePath}", null, "OnLoadFileSetAsync");
+                            return;
+                        }
                     }
                     else return;
                 }
 
-                var layerParams = new LayerCreationParams(new Uri(filePath));
-                var fileUri = new Uri(filePath);
-
-                // --- THIS IS THE CORRECTED LOGIC ---
-                // Handle each file type appropriately
-                switch (fs.filesetType.ToLowerInvariant())
+                try // This try block will catch the crash.
                 {
-                    case "shapefile":
-                        // The generic version for FeatureLayer can use LayerCreationParams
-                        createdLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
-                        break;
-                    case "dwg":
-                        // The non-generic version for a GroupLayer needs the Uri directly
-                        createdLayer = LayerFactory.Instance.CreateLayer(fileUri, activeMap);
-                        break;
+                    var layerParams = new LayerCreationParams(new Uri(filePath));
+                    var fileUri = new Uri(filePath);
+
+                    switch (fs.filesetType.ToLowerInvariant())
+                    {
+                        case "shapefile":
+                            createdLayer = LayerFactory.Instance.CreateLayer<FeatureLayer>(layerParams, activeMap);
+                            break;
+                        case "dwg":
+                            createdLayer = LayerFactory.Instance.CreateLayer(fileUri, activeMap);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // If an error occurs, log it and inform the user gracefully.
+                    Log.RecordError($"Failed to load layer from source: {filePath}", ex, "OnLoadFileSetAsync");
+                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                        $"Could not load the selected layer. The data source may be invalid or incomplete.\n\nError: {ex.Message}",
+                        "Layer Load Error");
+                    createdLayer = null; // Ensure createdLayer is null on failure.
                 }
             });
 

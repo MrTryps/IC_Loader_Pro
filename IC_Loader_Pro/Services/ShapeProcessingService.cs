@@ -438,6 +438,70 @@ namespace IC_Loader_Pro.Services
             }
         }
 
+        // In IC_Loader_Pro/Services/ShapeProcessingService.cs
+
+        public async Task CopyShapeToProposedAsync(Geometry shape, string newShapeId, string icType)
+        {
+            const string methodName = "CopyShapeToProposedAsync";
+
+            var proposedFcRule = IcRules.ReturnIcGisTypeSettings(icType)?.ProposedFeatureClass;
+            if (proposedFcRule == null)
+            {
+                Log.RecordError("Proposed feature class is not configured in the rules.", null, methodName);
+                return;
+            }
+
+            bool success = await QueuedTask.Run(async () =>
+            {
+                var gdbService = new GeodatabaseService();
+                using (var proposedFc = await gdbService.GetFeatureClassAsync(proposedFcRule))
+                {
+                    if (proposedFc == null) return false;
+
+                    var editOperation = new EditOperation
+                    {
+                        Name = $"Copy Proposed Shape {newShapeId}",
+                        ShowProgressor = false,
+                        ShowModalMessageAfterFailure = true
+                    };
+
+                    // --- START OF THE FIX ---
+                    // This is the standard, compatible pattern for creating a feature.
+                    var attributes = new Dictionary<string, object>
+            {
+                { "SHAPE_ID", newShapeId },
+                { proposedFc.GetDefinition().GetShapeField(), shape }
+            };
+
+                    // Queue the create operation.
+                    editOperation.Create(proposedFc, attributes);
+
+                    // Execute the operation. This now calls the correct parameterless overload.
+                    bool wasExecuted = editOperation.Execute();
+                    // --- END OF THE FIX ---
+
+                    if (!wasExecuted)
+                    {
+                        Log.RecordError($"EditOperation failed to copy shape '{newShapeId}'. Reason: {editOperation.ErrorMessage}", null, methodName);
+                    }
+                    return wasExecuted;
+                }
+            });
+
+            if (success)
+            {
+                Log.RecordMessage($"Shape {newShapeId} successfully copied to proposed feature class.", BisLogMessageType.Note);
+                await Project.Current.SaveEditsAsync();
+            }
+            else
+            {
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(
+                    $"Failed to save the new shape '{newShapeId}' to the geodatabase. Please check the logs for details.",
+                    "Save Error");
+            }
+        }
+
+
 
         /// <summary>
         /// Copies an approved shape's geometry and key attributes into the 'proposed' feature class.
@@ -445,7 +509,7 @@ namespace IC_Loader_Pro.Services
         /// <param name="shape">The geometry of the shape to save.</param>
         /// <param name="newShapeId">The new, unique SHAPE_ID for the feature.</param>
         /// <param name="icType">The current IC Type, used to find the correct feature class from the rules.</param>
-        public async Task CopyShapeToProposedAsync(Geometry shape, string newShapeId, string icType)
+        public async Task CopyShapeToProposedAsync_bak(Geometry shape, string newShapeId, string icType)
         {
             const string methodName = "CopyShapeToProposedAsync";
 
