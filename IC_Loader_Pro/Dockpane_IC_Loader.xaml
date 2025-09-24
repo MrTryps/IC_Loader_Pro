@@ -67,7 +67,6 @@
                     </Style>
                 </TextBlock.Style>
             </TextBlock>
-
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                 <Menu VerticalAlignment="Center" Background="Transparent">
                     <MenuItem Header="_Notes" Command="{Binding ShowNotesCommand}"/>
@@ -76,10 +75,18 @@
 
                     <MenuItem Header="_Options">
                         <MenuItem Header="Test Mode"
-                          IsCheckable="True"
-                          IsChecked="{Binding IsInTestMode}"
-                          ToolTip="When checked, only emails from the test sender will be shown."/>
-                    </MenuItem>                 
+                      IsCheckable="True"
+                      IsChecked="{Binding IsInTestMode}"
+                      ToolTip="When checked, only emails from the test sender will be shown."/>
+
+                        <Separator />
+                        <MenuItem Header="Zoom to Site Distance (ft):" IsEnabled="False" />
+                        <MenuItem>
+                            <TextBox Text="{Binding ZoomToSiteDistance, UpdateSourceTrigger=PropertyChanged}" 
+                         MinWidth="100"
+                         ToolTip="Enter the desired viewing width in feet for the 'Zoom to Site' button."/>
+                        </MenuItem>
+                    </MenuItem>
                 </Menu>
             </StackPanel>
 

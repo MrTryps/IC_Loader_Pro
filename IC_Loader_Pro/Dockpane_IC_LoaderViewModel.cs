@@ -201,6 +201,13 @@ namespace IC_Loader_Pro
             }
         }
 
+        private double _zoomToSiteDistance = 500; // Default distance in feet
+        public double ZoomToSiteDistance
+        {
+            get => _zoomToSiteDistance;
+            set => SetProperty(ref _zoomToSiteDistance, value);
+        }
+
         #endregion
 
         #region Constructor

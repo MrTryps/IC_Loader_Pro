@@ -727,8 +727,31 @@ namespace IC_Loader_Pro
         {
             if (_currentSiteLocation != null)
             {
-                // Pass the site's geometry to our generic zoom helper.
-                await ZoomToGeometryAsync(new List<Geometry> { _currentSiteLocation });
+                // --- START OF CORRECTED LOGIC ---
+                // All map interactions must run on the main CIM thread via QueuedTask.
+                await QueuedTask.Run(() =>
+                {
+                    var mapView = MapView.Active;
+                    if (mapView == null) return;
+
+                    // 1. Get the current camera to preserve its heading, pitch, and roll.
+                    var currentCamera = mapView.Camera;
+
+                    // 2. Create a new camera centered on our site location, with the new scale,
+                    //    but using the existing camera's orientation.
+                    var newCamera = new Camera(
+                 _currentSiteLocation.X,
+                 _currentSiteLocation.Y,
+                 ZoomToSiteDistance * 2, // The new scale
+                 currentCamera.Heading,  // Preserve existing heading
+                 mapView.Map.SpatialReference,    // Preserve existing pitch
+                 CameraViewpoint.LookAt // This is the correct type for the final argument
+             );
+
+                    // 3. Zoom to the new camera position. This is the correct method call.
+                    mapView.ZoomTo(newCamera);
+                });
+                // --- END OF CORRECTED LOGIC ---
             }
         }
 
