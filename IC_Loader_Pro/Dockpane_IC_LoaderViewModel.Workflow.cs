@@ -239,7 +239,7 @@ namespace IC_Loader_Pro
                 EmailType finalEmailType = classification.Type;
                 if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
                 {
-                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess);
+                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess, _currentIcSetting, outlookApp);
                     if (wasSelected)
                     {
                         finalEmailType = selectedType;
@@ -465,7 +465,7 @@ namespace IC_Loader_Pro
                 EmailType finalEmailType = classification.Type;
                 if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
                 {
-                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess);
+                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess, _currentIcSetting, outlookApp);
                     if (wasSelected)
                     {
                         finalEmailType = selectedType;
@@ -643,10 +643,9 @@ namespace IC_Loader_Pro
             await ProcessSelectedQueueAsync();
         }
 
-        private async Task<(bool wasSelected, EmailType selectedType)> RequestManualEmailClassification(EmailItem email)
+        private async Task<(bool wasSelected, EmailType selectedType)> RequestManualEmailClassification(EmailItem email, IcGisTypeSetting icSetting, Outlook.Application outlookApp)
         {
-            var attachmentNames = email.Attachments.Select(a => a.FileName).ToList();
-            var popupViewModel = new ViewModels.ManualEmailClassificationViewModel(email.SenderEmailAddress, email.Subject, attachmentNames);
+            var popupViewModel = new ViewModels.ManualEmailClassificationViewModel(email, icSetting, outlookApp);
             var popupWindow = new Views.ManualEmailClassificationWindow
             {
                 DataContext = popupViewModel,
@@ -655,10 +654,8 @@ namespace IC_Loader_Pro
 
             if (popupWindow.ShowDialog() == true)
             {
-                // Return true and the user's selection
                 return (true, popupViewModel.SelectedEmailType);
             }
-            // Return false and a default value
             return (false, EmailType.Unknown);
         }
 

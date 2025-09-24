@@ -28,7 +28,10 @@
         <GroupBox Header="Attachments" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,10">
             <ListView ItemsSource="{Binding AttachmentFileNames}" MaxHeight="100"/>
         </GroupBox>
-
+        <Button Grid.Row="4" Grid.ColumnSpan="2" 
+                Content="View Original Email in Outlook" 
+                Command="{Binding ViewEmailCommand}" 
+                HorizontalAlignment="Center" Margin="0,5"/>
         <ComboBox Grid.Row="4" Grid.ColumnSpan="2" ItemsSource="{Binding AvailableEmailTypes}" SelectedItem="{Binding SelectedEmailType}" VerticalAlignment="Center" Margin="0,5,0,0"/>
 
         <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
