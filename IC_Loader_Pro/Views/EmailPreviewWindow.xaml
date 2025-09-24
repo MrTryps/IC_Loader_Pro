@@ -54,7 +54,15 @@
         </StackPanel>
 
         <GroupBox Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" Header="HTML (Editable)">
-            <TextBox Text="{Binding HtmlBody, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+            <TextBox x:Name="HtmlBodyTextBox" 
+             Text="{Binding HtmlBody, UpdateSourceTrigger=PropertyChanged}" 
+             AcceptsReturn="True" 
+             VerticalScrollBarVisibility="Auto" 
+             FontFamily="Consolas">
+                <TextBox.ContextMenu>
+                    <ContextMenu/>
+                </TextBox.ContextMenu>
+            </TextBox>
         </GroupBox>
 
         <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" Content="Refresh Preview" Click="RefreshButton_Click" HorizontalAlignment="Center" Margin="5"/>

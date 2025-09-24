@@ -1,6 +1,7 @@
 ﻿using ArcGIS.Desktop.Catalog;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
+using BIS_Tools_DataModels_2025;
 using IC_Loader_Pro.Models;
 using IC_Rules_2025;
 using System.Collections.Generic;
@@ -21,7 +22,8 @@ namespace IC_Loader_Pro.ViewModels
         private string _htmlBody;
         public string HtmlBody { get => _htmlBody; set => SetProperty(ref _htmlBody, value); }
 
-        // --- START OF MODIFIED CODE ---
+        public List<EmailTemplate> InsertableTemplates { get; }
+
         private List<string> _toRecipients;
         public List<string> ToRecipients { get => _toRecipients; set => SetProperty(ref _toRecipients, value); }
 
@@ -30,7 +32,6 @@ namespace IC_Loader_Pro.ViewModels
 
         private List<string> _bccRecipients;
         public List<string> BccRecipients { get => _bccRecipients; set => SetProperty(ref _bccRecipients, value); }
-        // --- END OF MODIFIED CODE ---
 
         public ObservableCollection<string> Attachments { get; } = new ObservableCollection<string>();
 
@@ -52,12 +53,14 @@ namespace IC_Loader_Pro.ViewModels
         public ICommand AddAttachmentCommand { get; }
         public ICommand RemoveAttachmentCommand { get; }
 
-        public EmailPreviewViewModel(OutgoingEmail email, IcTestResult testResult)
+        public EmailPreviewViewModel(OutgoingEmail email, IcTestResult testResult, IcNamedTests namedTests)
         {
             _emailModel = email;
             _testResult = testResult;
             Subject = email.Subject;
             HtmlBody = email.Body;
+
+            InsertableTemplates = namedTests.ReturnInsertTemplates();
 
             // Initialize the lists from the model
             ToRecipients = new List<string>(email.ToRecipients);
@@ -71,6 +74,23 @@ namespace IC_Loader_Pro.ViewModels
             ShowResultsCommand = new RelayCommand(OnShowResults, () => _testResult != null);
             AddAttachmentCommand = new RelayCommand(OnAddAttachment);
             RemoveAttachmentCommand = new RelayCommand(OnRemoveAttachment, () => !string.IsNullOrEmpty(SelectedAttachment));
+        }
+
+        /// <summary>
+        /// Inserts a given string of text into the HtmlBody at a specific position.
+        /// </summary>
+        /// <param name="textToInsert">The template text to insert.</param>
+        /// <param name="position">The character index (caret position) where the text should be inserted.</param>
+        public void InsertTemplateText(string textToInsert, int position)
+        {
+            if (string.IsNullOrEmpty(HtmlBody))
+            {
+                HtmlBody = textToInsert;
+            }
+            else
+            {
+                HtmlBody = HtmlBody.Insert(position, textToInsert);
+            }
         }
 
         private void OnAddAttachment()

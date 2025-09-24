@@ -20,17 +20,21 @@ namespace IC_Loader_Pro.Services
     {
         public async Task<bool> SendConfirmationEmailAsync(string deliverableId, IcTestResult testResult, string icType, Microsoft.Office.Interop.Outlook.Application outlookApp, List<AnalyzedFile> submittedFiles)
         {
-            var emailToEdit = BuildReplyEmail(deliverableId, testResult, icType, submittedFiles);
+            var namedTests = new IcNamedTests(Log, PostGreTool);
+
+
+            var emailToEdit = BuildReplyEmail(deliverableId, testResult, icType, submittedFiles, namedTests);
             if (emailToEdit == null)
             {
                 Log.RecordMessage("Email not built because no recipients were specified.", BisLogMessageType.Note);
                 return true;
             }
 
+
             bool userClickedSend = false;
             await FrameworkApplication.Current.Dispatcher.InvokeAsync(() =>
             {
-                var previewViewModel = new ViewModels.EmailPreviewViewModel(emailToEdit, testResult);
+                var previewViewModel = new ViewModels.EmailPreviewViewModel(emailToEdit, testResult, namedTests);
                 var previewWindow = new Views.EmailPreviewWindow
                 {
                     DataContext = previewViewModel,
@@ -55,14 +59,14 @@ namespace IC_Loader_Pro.Services
             return userClickedSend;
         }
 
-        private OutgoingEmail BuildReplyEmail(string deliverableId, IcTestResult testResult, string icType, List<AnalyzedFile> submittedFiles)
+        private OutgoingEmail BuildReplyEmail(string deliverableId, IcTestResult testResult, string icType, List<AnalyzedFile> submittedFiles, IcNamedTests namedTests)
         {
             var finalCumulativeAction = testResult.CumulativeAction;
             if (finalCumulativeAction.EmailRp != true && finalCumulativeAction.EmailHazsite != true) return null;
 
             var outgoingEmail = new OutgoingEmail();
             var deliverableInfo = IcRules.ReturnEmailDeliverableInfo(deliverableId);
-            var namedTests = new IcNamedTests(Log, PostGreTool);
+           // var namedTests = new IcNamedTests(Log, PostGreTool);
             var baseParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 { "DELID", deliverableId },
