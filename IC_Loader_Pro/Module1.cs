@@ -5,14 +5,16 @@ using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
 using IC_Rules_2025;
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 
 namespace IC_Loader_Pro
 {
-    internal class Module1 : Module
+    internal class Module1 : ArcGIS.Desktop.Framework.Contracts.Module
     {
         private static Module1 _this = null;
         private static BIS_Log _log;
@@ -34,6 +36,7 @@ namespace IC_Loader_Pro
         public static BisDbAccess AccessTool => _accessTool;
         public static Bis_Regex RegexTool => _regexTool;
         public static BisFileTools FileTool => _fileTool;
+        public static DateTime BuildDate { get; private set; }
 
         /// <summary>
         /// The required Well-Known ID (WKID) for the project's coordinate system.
@@ -60,7 +63,30 @@ namespace IC_Loader_Pro
 
             try
             {
+                var attribute = Assembly.GetExecutingAssembly()
+                                    .GetCustomAttributes<AssemblyMetadataAttribute>()
+                                    .FirstOrDefault(a => a.Key == "BuildDate");
+                if (attribute != null)
+                {
+                    BuildDate = DateTime.Parse(attribute.Value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                }
+            }
+            catch (Exception ex)
+            {
+                BuildDate = DateTime.MinValue;
+                // We can't use the main logger here because it might not be initialized yet.
+                // This will be a silent failure, which is acceptable for a non-critical feature.
+            }
+
+
+            try
+            {
                 _log = new BIS_Log("IC_Loader_Pro");
+                if (BuildDate != DateTime.MinValue)
+                {
+                    _log.RecordMessage($"IC Loader Pro Build Date: {BuildDate.ToLocalTime():yyyy-MM-dd HH:mm:ss}", BIS_Log.BisLogMessageType.Note);
+                    _log.AddBlankLine();
+                }
                 _fileTool = new BisFileTools(_log);
                 _regexTool = new Bis_Regex(_log);
                 _postGreTool = new BIS_DB_PostGre(_log);
@@ -68,7 +94,6 @@ namespace IC_Loader_Pro
                 _compassTool = new BisDbCompass(_log);
                 _accessTool = new BisDbAccess(_log);
                 _icRules = new IC_Rules(_log, _postGreTool, _compassTool, _njemsTool, _accessTool, _fileTool, _regexTool);
-
                 CleanupOrphanedTempFolders();
             }
             catch (Exception ex)
@@ -87,6 +112,24 @@ namespace IC_Loader_Pro
                 return false;
             }
 
+            try
+            {
+                var attribute = Assembly.GetExecutingAssembly()
+                                    .GetCustomAttributes<AssemblyMetadataAttribute>()
+                                    .FirstOrDefault(a => a.Key == "BuildDate");
+                if (attribute != null)
+                {
+                    // Parse the ISO 8601 date format from the attribute
+                    BuildDate = DateTime.Parse(attribute.Value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fallback in case of an error
+                BuildDate = DateTime.MinValue;
+                Log?.RecordError("Could not parse build date from assembly.", ex, "Initialize");
+            }
+            
             ProjectClosingEvent.Subscribe(OnProjectClosing);
             return true;
         }

@@ -214,6 +214,7 @@ namespace IC_Loader_Pro
         protected Dockpane_IC_LoaderViewModel()
         {
             _isInTestMode = Module1.IsInTestMode;
+            this.Caption = $"IC Loader (Build: {Module1.BuildDate.ToLocalTime():yyyy-MM-dd HH:mm})";
 
 
             // Create the public, read-only collection that the UI will bind to
