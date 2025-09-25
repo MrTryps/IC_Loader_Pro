@@ -215,7 +215,7 @@ namespace IC_Loader_Pro.Services
                     // Check if the value is too long
                     if (value.Length > maxLength)
                     {
-                        Log.RecordMessage($"Recording email body data. Data for column '{columnName}' is too long ({value.Length} chars). Truncating to {maxLength} chars.", BisLogMessageType.Warning);
+                        Log.RecordMessage($"Recording email body data. Data for column '{columnName}' is too long ({value.Length} chars). Truncating to {maxLength} chars.", BisLogMessageType.Note);
                         // Truncate the value before adding it
                         value = value.Substring(0, maxLength);
                     }
@@ -225,7 +225,7 @@ namespace IC_Loader_Pro.Services
                 }
                 else
                 {
-                    Log.RecordMessage($"Ignored unknown field '{columnName}' from email body parser.", BisLogMessageType.Warning);
+                    Log.RecordMessage($"Ignored unknown field '{columnName}' from email body parser.", BisLogMessageType.Note);
                 }
             }
 

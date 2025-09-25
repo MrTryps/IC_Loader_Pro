@@ -353,7 +353,7 @@ namespace IC_Loader_Pro.Services
 
             if (!shapesInFile.Any())
             {
-                _log.RecordMessage($"No processable polygon features were found in the file: {fileset.fileName}", BisLogMessageType.Warning);
+                _log.RecordMessage($"No processable polygon features were found in the file: {fileset.fileName}", BisLogMessageType.Note);
             }
 
             return shapesInFile;

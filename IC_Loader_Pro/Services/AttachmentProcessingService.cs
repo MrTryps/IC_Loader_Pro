@@ -82,35 +82,16 @@ namespace IC_Loader_Pro.Services
         {
             const string methodName = "AnalyzeAttachments";
 
-            var analysisResult = new AttachmentAnalysisResult();
-            IcTestResult rootTest = null;
-
-            // Wrap the creation of the root test result in its own try-catch block.
-            try
+            var analysisResult = new AttachmentAnalysisResult
             {
-                rootTest = _namedTests.returnNewTestResult("GIS_Attachments_Tests", "", IcTestResult.TestType.Deliverable);
-            }
-            catch (Exception ex)
-            {
-                _log.RecordError("Could not create the root attachment test result. A default will be used.", ex, methodName);
-                // If it fails, create a default, failing test result so the process can continue.
-                var tempRule = new IcTestRule { Name = "AttachmentProcessingError", Action = TestActionResponse.Fail };
-                rootTest = new IcTestResult(tempRule, "", IcTestResult.TestType.Deliverable, _log, null, _namedTests)
-                {
-                    Passed = false,
-                    Comments = { "Critical error: Could not load the 'GIS_Attachments_Tests' rule from the database." }
-                };
-            }
-            analysisResult.TestResult = rootTest;
-            analysisResult.TempFolderPath = folderToSearch;
+                TestResult = _namedTests.returnNewTestResult("GIS_Attachments_Tests", "", IcTestResult.TestType.Deliverable),
+                TempFolderPath = folderToSearch
+            };
 
-
-            // First, check if there was even a folder created.
             if (string.IsNullOrEmpty(folderToSearch))
             {
                 analysisResult.TestResult.Passed = false;
                 analysisResult.TestResult.AddComment("Email contains no attachments.");
-                _log.RecordMessage("Attachment analysis determined the email has no attachments.", BisLogMessageType.Note);
                 return analysisResult;
             }
 
@@ -142,59 +123,62 @@ namespace IC_Loader_Pro.Services
                     {
                         var duplicateTest = _namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", "", IcTestResult.TestType.Submission);
                         duplicateTest.Passed = false;
-                       // duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}. These files will be ignored.");
+                        duplicateTest.AddComment($"The submission contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}. These files will be ignored.");
                         analysisResult.TestResult.AddSubordinateTestResult(duplicateTest);
                     }
                 }
 
-
-
-                // Step 2: Unzip any archive files.
+                // 2. Unzip any archive files.
                 var unzipService = new UnzipService(_log);
                 var unzippedFilesInfo = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
+                var unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip", "", IcTestResult.TestType.Deliverable);
+                unzipTestResult.AddComment(unzippedFilesInfo.Any() ? $"Successfully extracted {unzippedFilesInfo.Count} zip file(s)." : "No .zip files were found in the attachments.");
+                analysisResult.TestResult.AddSubordinateTestResult(unzipTestResult);
 
-                IcTestResult unzipTestResult = null;
-                // Wrap the creation of the unzip test result in its own try-catch block.
-                try
-                {
-                    unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip", "", IcTestResult.TestType.Deliverable);
-                    if (unzippedFilesInfo.Any())
-                    {
-                        unzipTestResult.Comments.Add($"Successfully extracted {unzippedFilesInfo.Count} zip file(s).");
-                    }
-                    else
-                    {
-                        unzipTestResult.Comments.Add("No .zip files were found in the attachments.");
-                    }
-                    analysisResult.TestResult.AddSubordinateTestResult(unzipTestResult);
-                }
-                catch (Exception ex)
-                {
-                    _log.RecordError("Could not create the unzip test result. This step will be skipped in the results.", ex, methodName);
-                }
+                var allIdentifiedFileSets = _rules.ReturnFileSetsFromDirectory_NewMethod(folderToSearch, icType, true);
 
-                // Step 3: Identify logical GIS filesets by searching the root folder and all unzipped sub-folders.
-                var allIdentifiedFileSets = new List<BIS_Tools_DataModels_2025.fileset>();
-                allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(folderToSearch, icType, false));
-                foreach (var unzippedInfo in unzippedFilesInfo)
-                {
-                    allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(unzippedInfo.ExtractionPath, icType, false));
-                }
-                analysisResult.IdentifiedFileSets = allIdentifiedFileSets;
+                // 3. Filter out any filesets that were identified as having duplicate names earlier.
+                analysisResult.IdentifiedFileSets = allIdentifiedFileSets
+                                                     .Where(fs => !problematicBaseNames.Contains(fs.fileName))
+                                                     .ToList();
 
+
+
+                //    // 3. Create a list of all folders to search, which includes the root folder AND all new subfolders from the unzipping process.
+                //    var foldersToSearch = new List<string> { folderToSearch };
+                //    foldersToSearch.AddRange(unzippedFilesInfo.Select(info => info.ExtractionPath));
+
+                //    var allIdentifiedFileSets = new List<fileset>();
+
+                //    // 4. Loop through each folder and find filesets within it (non-recursively).
+                //    foreach (var currentFolder in foldersToSearch)
+                //    {
+                //        allIdentifiedFileSets.AddRange(_rules.ReturnFileSetsFromDirectory_NewMethod(currentFolder, icType, true));
+                //    }
+
+                //    var uniqueFilesets = allIdentifiedFileSets
+                //.GroupBy(fs => Path.Combine(fs.path, fs.fileName))
+                //.Select(g => g.First())
+                //.ToList();
+
+
+                //    // 5. Filter out any filesets that were identified as having duplicate names earlier.
+                //    analysisResult.IdentifiedFileSets = allIdentifiedFileSets
+                //                                         .Where(fs => !problematicBaseNames.Contains(fs.fileName))
+                //                                         .ToList();
+
+                // 6. Check for incomplete filesets among the valid ones.
                 foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validSet))
                 {
                     var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
                     incompleteTest.Passed = false;
-                    incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
                     incompleteTest.addParameter("filename", fileset.fileName);
                     analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
                     analysisResult.TestResult.Passed = false;
                 }
 
-                // Step 4: Create a comprehensive list of all individual files.
+                // 7. Create a comprehensive list of all individual files.
                 var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch);
-
                 foreach (string filePath in allFilesFound)
                 {
                     var parentZipInfo = unzippedFilesInfo
@@ -217,95 +201,6 @@ namespace IC_Loader_Pro.Services
 
             return analysisResult;
         }
-        //public AttachmentAnalysisResult AnalyzeAttachments(string folderToSearch, string icType)
-        //{
-        //    const string methodName = "AnalyzeAttachments";
-
-        //    var analysisResult = new AttachmentAnalysisResult
-        //    {
-        //        TestResult = _namedTests.returnNewTestResult("GIS_Attachments_Tests_Passed", "", IcTestResult.TestType.Deliverable),
-        //        TempFolderPath = folderToSearch
-        //    };
-
-        //    // First, check if there was even a folder created.
-        //    // The TempFolderPath will only be set if attachments existed to be saved.
-        //    if (string.IsNullOrEmpty(folderToSearch))
-        //    {
-        //        // This is not a code error, but a validation failure. The submission is invalid.
-        //        analysisResult.TestResult.Passed = false;
-        //        analysisResult.TestResult.AddComment("Email contains no attachments.");
-        //        _log.RecordMessage("Attachment analysis determined the email has no attachments.", BisLogMessageType.Note);
-        //        return analysisResult; // Exit immediately
-        //    }
-
-        //    try
-        //    {
-        //        // Step 1: Unzip any archive files.
-        //        var unzipService = new UnzipService(_log);
-        //        var unzipTestResult = _namedTests.returnNewTestResult("GIS_Attachments_Unzip_Passed", "", IcTestResult.TestType.Deliverable);
-
-        //        // This call finds all .zip files and extracts them.
-        //        var unzipResult = unzipService.UnzipAllInDirectory(folderToSearch, deleteOriginalZip: true);
-        //        var unzippedFilesInfo = unzipResult.Succeeded;
-
-        //        if (unzipResult.FailedFiles.Any())
-        //        {
-        //            // If any files failed, the test fails.
-        //            unzipTestResult.Passed = false;
-        //            unzipTestResult.AddComment($"Failed to extract {unzipResult.FailedFiles.Count} zip file(s): {string.Join(", ", unzipResult.FailedFiles)}. They may be corrupt.");
-        //        }
-        //        else if (unzipResult.Succeeded.Any())
-        //        {
-        //            unzipTestResult.Comments.Add($"Successfully extracted {unzipResult.Succeeded.Count} zip file(s).");
-        //        }
-        //        else
-        //        {
-        //            unzipTestResult.Comments.Add("No .zip files were found in the attachments.");
-        //        }
-        //        analysisResult.TestResult.AddSubordinateTestResult(unzipTestResult);
-
-
-        //        // Step 2: Identify logical GIS filesets from the entire folder content.
-        //        analysisResult.IdentifiedFileSets = _rules.ReturnFileSetsFromDirectory(folderToSearch, icType);
-
-
-        //        foreach (var fileset in analysisResult.IdentifiedFileSets.Where(fs => !fs.validFileSet))
-        //        {
-        //            var incompleteTest = _namedTests.returnNewTestResult("GIS_Incomplete_Dataset", fileset.fileName, IcTestResult.TestType.Submission);
-        //            incompleteTest.Passed = false; // This is a failing test.
-        //            incompleteTest.AddComment($"The dataset '{fileset.fileName}' is incomplete or missing required files (e.g., .dbf, .shx).");
-        //            analysisResult.TestResult.AddSubordinateTestResult(incompleteTest);
-        //            //analysisResult.TestResult.Passed = false; // Mark the parent attachment test as failed.
-        //        }
-
-
-        //        // Step 3: Create a comprehensive list of all individual files.
-        //        var allFilesFound = _fileTool.ListOfFilesInFolder(folderToSearch); // true = recursive
-
-        //        foreach (string filePath in allFilesFound)
-        //        {
-        //            // Find which zip file this file came from, if any.
-        //            var parentZipInfo = unzippedFilesInfo
-        //                .FirstOrDefault(zipInfo => filePath.StartsWith(zipInfo.ExtractionPath, StringComparison.OrdinalIgnoreCase));
-
-        //            analysisResult.AllFiles.Add(new AnalyzedFile
-        //            {
-        //                FileName = Path.GetFileName(filePath),
-        //                CurrentPath = Path.GetDirectoryName(filePath),
-        //                // If the file was in a zip, record the zip's name as its original path.
-        //                OriginalPath = parentZipInfo.OriginalZipFileName ?? string.Empty
-        //            });
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _log.RecordError("An error occurred during attachment analysis.", ex, methodName);
-        //        analysisResult.TestResult.Passed = false;
-        //        analysisResult.TestResult.Comments.Add($"Fatal error during attachment analysis: {ex.Message}");
-        //    }
-
-        //    return analysisResult;
-        //}
 
     }
 }

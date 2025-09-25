@@ -842,7 +842,7 @@ namespace IC_Loader_Pro
             if (resultTable.Rows.Count > 1)
             {
                 string warningMsg = $"Multiple coordinates found in CORE_PI_COORDINATE_DETAIL for {prefId}. Using the first valid set.";
-                Log.RecordMessage(warningMsg, BisLogMessageType.Warning);
+                Log.RecordMessage(warningMsg, BisLogMessageType.Note);
                 // Show a popup to the user on the UI thread
                 FrameworkApplication.Current.Dispatcher.Invoke(() =>
                 {

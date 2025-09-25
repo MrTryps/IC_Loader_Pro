@@ -115,7 +115,9 @@ namespace IC_Loader_Pro
 
                 // 2. If not, find the full path to the .stylx file within our add-in's installation folder.
                 string addinAssemblyLocation = Assembly.GetExecutingAssembly().Location;
+                Log.RecordMessage("Assemblyfolder location: " + addinAssemblyLocation, BisLogMessageType.Note);
                 string addinFolder = Path.GetDirectoryName(addinAssemblyLocation);
+                Log.RecordMessage("Assemblyfolder path location: " + addinFolder, BisLogMessageType.Note);
                 string styleFilePath = Path.Combine(addinFolder, "ICLoader_Symbols.stylx");
 
                 if (!File.Exists(styleFilePath))
@@ -126,7 +128,7 @@ namespace IC_Loader_Pro
 
                 // 3. Add the style file to the current project using the correct StyleHelper class.
                 //    This is the modern, reliable method from the API guide.
-                Log.RecordMessage($"Adding style file '{styleName}' to the current project from path: {styleFilePath}", BisLogMessageType.Warning);
+                Log.RecordMessage($"Adding style file '{styleName}' to the current project from path: {styleFilePath}", BisLogMessageType.Note);
                 StyleHelper.AddStyle(Project.Current, styleFilePath);
             });
         }

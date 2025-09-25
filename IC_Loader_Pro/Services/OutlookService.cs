@@ -125,13 +125,13 @@ namespace IC_Loader_Pro.Services
             // If the flag is true, filter FOR the test sender.
             if (isInTestMode.Value)
             {
-                Log.RecordMessage($"TEST MODE (Include): Filtering for emails from {testSenderEmail}", BisLogMessageType.Warning);
+                Log.RecordMessage($"TEST MODE (Include): Filtering for emails from {testSenderEmail}", BisLogMessageType.Note);
                 return results.Where(e => e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
             }
             // If the flag is false, filter OUT the test sender.
             else
             {
-                Log.RecordMessage($"TEST MODE (Exclude): Filtering out emails from {testSenderEmail}", BisLogMessageType.Warning);
+                Log.RecordMessage($"TEST MODE (Exclude): Filtering out emails from {testSenderEmail}", BisLogMessageType.Note);
                 return results.Where(e => !e.SenderEmailAddress.Equals(testSenderEmail, StringComparison.OrdinalIgnoreCase)).ToList();
             }
         }
@@ -598,9 +598,67 @@ namespace IC_Loader_Pro.Services
         /// </summary>
         /// <param name="fullSourceFolderPath">The full path of the folder where the email currently resides (e.g., \\Store\Inbox).</param>
         /// <param name="fullDestinationFolderPath">The full path of the folder to move the email to.</param>
+        //public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string fullSourceFolderPath, string fullDestinationFolderPath)
+        //{
+        //    Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{fullDestinationFolderPath}'.", BisLogMessageType.Note);
+        //    if (string.IsNullOrEmpty(messageId)) return false;
+
+        //    Outlook.NameSpace mapiNamespace = null;
+        //    Outlook.MAPIFolder sourceFolder = null;
+        //    Outlook.MAPIFolder destinationFolder = null;
+        //    object itemToMove = null;
+        //    bool success = false;
+
+        //    try
+        //    {
+        //        mapiNamespace = outlookApp.GetNamespace("MAPI");
+
+        //        var (sourceStore, sourcePath) = ParseOutlookPath(fullSourceFolderPath);
+        //        var (destStore, destPath) = ParseOutlookPath(fullDestinationFolderPath);
+
+        //        if (!sourceStore.Equals(destStore, StringComparison.OrdinalIgnoreCase))
+        //        {
+        //            Log.RecordError("Move failed: Source and destination stores must be the same.", null, nameof(MoveEmailToFolder));
+        //            return false;
+        //        }
+
+        //        sourceFolder = GetFolderFromPath(mapiNamespace, sourceStore, sourcePath);
+        //        destinationFolder = GetFolderFromPath(mapiNamespace, destStore, destPath);
+
+        //        if (sourceFolder == null || destinationFolder == null) return false; // Errors are logged in GetFolderFromPath
+
+        //        string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
+        //        itemToMove = sourceFolder.Items.Find(filter);
+
+        //        if (itemToMove is Outlook.MailItem mailItem)
+        //        {
+        //            mailItem.Move(destinationFolder);
+        //            success = true;
+        //            Log.RecordMessage($"Successfully moved email '{messageId}'.", BisLogMessageType.Note);
+        //        }
+        //        else
+        //        {
+        //            Log.RecordError($"Move failed: Could not find email with ID '{messageId}' in source folder.", null, nameof(MoveEmailToFolder));
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Log.RecordError($"An exception occurred while trying to move email '{messageId}'.", ex, nameof(MoveEmailToFolder));
+        //        success = false;
+        //    }
+        //    finally
+        //    {
+        //        if (itemToMove != null) Marshal.ReleaseComObject(itemToMove);
+        //        if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
+        //        if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
+        //        if (mapiNamespace != null) Marshal.ReleaseComObject(mapiNamespace);
+        //    }
+        //    return success;
+        //}
+
         public bool MoveEmailToFolder(Outlook.Application outlookApp, string messageId, string fullSourceFolderPath, string fullDestinationFolderPath)
         {
-            Log.RecordMessage($"Attempting to move email '{messageId}' to folder '{fullDestinationFolderPath}'.", BisLogMessageType.Note);
+            Log.RecordMessage($"Attempting to move email '{messageId}' from '{fullSourceFolderPath}' to '{fullDestinationFolderPath}'.", BisLogMessageType.Note);
             if (string.IsNullOrEmpty(messageId)) return false;
 
             Outlook.NameSpace mapiNamespace = null;
@@ -616,25 +674,26 @@ namespace IC_Loader_Pro.Services
                 var (sourceStore, sourcePath) = ParseOutlookPath(fullSourceFolderPath);
                 var (destStore, destPath) = ParseOutlookPath(fullDestinationFolderPath);
 
-                if (!sourceStore.Equals(destStore, StringComparison.OrdinalIgnoreCase))
-                {
-                    Log.RecordError("Move failed: Source and destination stores must be the same.", null, nameof(MoveEmailToFolder));
-                    return false;
-                }
-
                 sourceFolder = GetFolderFromPath(mapiNamespace, sourceStore, sourcePath);
                 destinationFolder = GetFolderFromPath(mapiNamespace, destStore, destPath);
 
-                if (sourceFolder == null || destinationFolder == null) return false; // Errors are logged in GetFolderFromPath
+                if (sourceFolder == null || destinationFolder == null) return false;
 
                 string filter = $"@SQL=\"{PR_INTERNET_MESSAGE_ID}\" = '{messageId}'";
                 itemToMove = sourceFolder.Items.Find(filter);
 
                 if (itemToMove is Outlook.MailItem mailItem)
                 {
-                    mailItem.Move(destinationFolder);
+                    // --- START OF THE FIX ---
+                    // To move an item between different stores (mailboxes), we must copy it
+                    // to the destination and then delete the original.
+                    Outlook.MailItem copiedItem = mailItem.Copy();
+                    copiedItem.Move(destinationFolder); // Move the copy to the final destination
+                    mailItem.Delete(); // Delete the original item from the source folder
+                                       // --- END OF THE FIX ---
+
                     success = true;
-                    Log.RecordMessage($"Successfully moved email '{messageId}'.", BisLogMessageType.Note);
+                    Log.RecordMessage($"Successfully moved email '{messageId}' across stores.", BisLogMessageType.Note);
                 }
                 else
                 {
@@ -648,6 +707,7 @@ namespace IC_Loader_Pro.Services
             }
             finally
             {
+                // Clean up all COM objects
                 if (itemToMove != null) Marshal.ReleaseComObject(itemToMove);
                 if (destinationFolder != null) Marshal.ReleaseComObject(destinationFolder);
                 if (sourceFolder != null) Marshal.ReleaseComObject(sourceFolder);
