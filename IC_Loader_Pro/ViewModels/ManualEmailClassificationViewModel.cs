@@ -39,7 +39,7 @@ namespace IC_Loader_Pro.ViewModels
             AttachmentFileNames = email.Attachments.Select(a => a.FileName).ToList();
 
             AvailableEmailTypes = EmailType.ListProcessableTypes()
-                                      .Where(e => e == EmailType.CEA || e == EmailType.DNA || e == EmailType.WRS || e == EmailType.Spam)
+                                      .Where(e => e == EmailType.CEA || e == EmailType.DNA || e == EmailType.WRS)
                                       .ToList();
             SelectedEmailType = AvailableEmailTypes.FirstOrDefault();
 

@@ -38,6 +38,7 @@
         <ComboBox Grid.Row="5" Grid.ColumnSpan="2" ItemsSource="{Binding AvailableEmailTypes}" SelectedItem="{Binding SelectedEmailType}" VerticalAlignment="Center" Margin="0,15,0,0"/>
 
         <StackPanel Grid.Row="6" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Move to Junk" Width="110" Click="JunkButton_Click" Margin="0,0,20,0" Background="#FFFBF0B2"/>
             <Button Content="Use this Type" Width="120" IsDefault="True" Click="OkButton_Click" Margin="0,0,10,0"/>
             <Button Content="Cancel" Width="80" IsCancel="True"/>
         </StackPanel>

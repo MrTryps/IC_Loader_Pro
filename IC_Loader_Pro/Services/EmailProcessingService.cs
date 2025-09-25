@@ -201,6 +201,14 @@ namespace IC_Loader_Pro.Services
             subjectLineTest.AddComment(subjectLineTest.Passed ? "Subject line is present." : "Original subject was empty.");
             rootTestResult.AddSubordinateTestResult(subjectLineTest);
 
+            if (finalType == EmailType.Spam)
+            {
+                string reason = "Email classified as SPAM.";
+                NotifyAndMoveEmail(outlookApp, emailToProcess, sourceFolderPath, sourceStoreName, currentIcSetting.OutlookSpamFolderPath, reason);
+                return new EmailProcessingResult { TestResult = null };
+            }
+
+
             // 1. Parse the email body EARLY to get the body Pref ID.
             var bodyParser = new EmailBodyParserService(selectedIcType);
             var bodyData = bodyParser.GetFieldsFromBody(emailToProcess.Body);

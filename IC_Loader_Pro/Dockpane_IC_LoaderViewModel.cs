@@ -1083,28 +1083,62 @@ namespace IC_Loader_Pro
         {
             if (string.IsNullOrEmpty(_pathForNextCleanup)) return;
 
-            // Make a local copy of the path in case the app state changes
             string pathToClean = _pathForNextCleanup;
             _pathForNextCleanup = null; // Clear the field immediately
 
             if (!Directory.Exists(pathToClean)) return;
 
-            // Retry logic to give Pro time to release file locks
-            for (int i = 0; i < 5; i++) // Try up to 5 times
+            // --- START OF MODIFIED LOGIC ---
+            // Run this cleanup on a background thread to avoid blocking the UI
+            await Task.Run(() =>
             {
-                try
+                for (int i = 0; i < 5; i++) // Retry up to 5 times
                 {
-                    Directory.Delete(pathToClean, true);
-                    Log.RecordMessage($"Successfully cleaned up temp folder: {pathToClean}", BisLogMessageType.Note);
-                    return; // Exit successfully
+                    try
+                    {
+                        // 1. Get all files in the directory and all its subdirectories.
+                        var files = Directory.GetFiles(pathToClean, "*", SearchOption.AllDirectories);
+
+                        // 2. Try to delete each file individually.
+                        foreach (var file in files)
+                        {
+                            try
+                            {
+                                File.SetAttributes(file, FileAttributes.Normal); // Ensure file is not read-only
+                                File.Delete(file);
+                            }
+                            catch (IOException)
+                            {
+                                // This file is likely locked by ArcGIS Pro. Silently ignore it.
+                            }
+                        }
+
+                        // 3. After attempting to delete all files, delete the main directory.
+                        //    The 'true' parameter means it will also delete any (now empty) subdirectories.
+                        Directory.Delete(pathToClean, true);
+
+                        Log.RecordMessage($"Successfully cleaned up temp folder: {pathToClean}", BisLogMessageType.Note);
+                        return; // Exit successfully if the directory is deleted
+                    }
+                    catch (IOException)
+                    {
+                        // This will be caught if the directory still contains a locked file.
+                        // We will wait and retry.
+                        Task.Delay(300).Wait(); // Wait a bit longer before retrying
+                    }
+                    catch (Exception ex)
+                    {
+                        // Catch any other unexpected errors, log them once, and stop trying.
+                        Log.RecordError($"An unexpected error occurred during cleanup of {pathToClean}.", ex, "PerformCleanupAsync");
+                        return;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Log.RecordError($"Cleanup attempt {i + 1} failed for {pathToClean}. Retrying in 250ms...", ex, "PerformCleanupAsync");
-                    await Task.Delay(250); // Wait a moment before retrying
-                }
-            }
-            Log.RecordError($"Failed to delete temp folder {pathToClean} after multiple retries.", null, "PerformCleanupAsync");
+
+                // If we exit the loop, it means the folder still couldn't be deleted.
+                // Log this just once as a warning instead of a verbose error.
+                Log.RecordMessage($"Could not fully clean up temp folder {pathToClean} due to persistent file locks.", BisLogMessageType.Warning);
+            });
+            // --- END OF MODIFIED LOGIC ---
         }
 
         private async Task OnReloadFileSetAsync(FileSetViewModel fileSetVM)

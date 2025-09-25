@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using static BIS_Log;
 using static IC_Loader_Pro.Module1;
+using static IC_Loader_Pro.Views.ManualEmailClassificationWindow;
 using Exception = System.Exception;
 using Outlook = Microsoft.Office.Interop.Outlook;
 
@@ -239,16 +240,26 @@ namespace IC_Loader_Pro
                 EmailType finalEmailType = classification.Type;
                 if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
                 {
-                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess, _currentIcSetting, outlookApp);
-                    if (wasSelected)
+                    var (choice, selectedType) = await RequestManualEmailClassification(emailToProcess, _currentIcSetting, outlookApp);
+
+                    switch (choice)
                     {
-                        finalEmailType = selectedType;
-                        classification.WasManuallyClassified = true;
-                    }
-                    else
-                    {
-                        shouldAutoAdvance = true;
-                        return;
+                        case ManualEmailClassificationWindow.UserChoice.Classify:
+                            finalEmailType = selectedType;
+                            classification.WasManuallyClassified = true;
+                            break;
+
+                        case ManualEmailClassificationWindow.UserChoice.Junk:
+                            StatusMessage = "Moving to Junk folder...";
+                            var (store, folder) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
+                            new OutlookService().MoveEmailToFolder(outlookApp, _currentEmail.Emailid, $"\\\\{store}\\{folder}", _currentIcSetting.OutlookSpamFolderPath);
+                            shouldAutoAdvance = true;
+                            return;
+
+                        case ManualEmailClassificationWindow.UserChoice.Cancel:
+                        default:
+                            shouldAutoAdvance = true;
+                            return;
                     }
                 }
 
@@ -375,263 +386,7 @@ namespace IC_Loader_Pro
                 }
             }
         }
-
-        private async Task ProcessSelectedQueueAsync_bak()
-        {
-            // --- 1. Initial UI and Configuration Setup ---
-            await PerformCleanupAsync();
-            await ClearManuallyLoadedLayersAsync();
-            IsEmailActionEnabled = false;
-            _foundFileSets.Clear();
-            _allProcessedShapes.Clear();
-
-            if (SelectedIcType == null || !_emailQueues.TryGetValue(SelectedIcType.Name, out var emailsToProcess) || !emailsToProcess.Any())
-            {
-                CurrentEmailSubject = "Queue is empty.";
-                StatusMessage = $"Queue '{SelectedIcType?.Name}' is empty.";
-                return;
-            }
-
-            Outlook.Application outlookApp = null;
-            var namedTests = new IcNamedTests(Log, PostGreTool);
-            var currentEmailSummary = emailsToProcess.First();
-            EmailItem emailToProcess = null;
-           
-            // This flag is the master controller for advancing the queue.
-            bool shouldAutoAdvance = false;
-
-            try
-            {
-                outlookApp = new Outlook.Application();                
-                var (storeName, folderPath) = OutlookService.ParseOutlookPath(_currentIcSetting.OutlookInboxFolderPath);
-
-                emailToProcess = await QueuedTask.Run(() => new OutlookService().GetEmailById(outlookApp, folderPath, currentEmailSummary.Emailid, storeName));
-                _currentEmail = emailToProcess;
-
-                // --- START OF NEW DUPLICATE FILENAME CHECK ---
-                //if (emailToProcess != null && emailToProcess.Attachments.Any())
-                //{
-                //    // Find any original filenames that appear more than once.
-                //    var duplicateOriginalFilenames = emailToProcess.Attachments
-                //                               .GroupBy(a => a.OriginalFileName, StringComparer.OrdinalIgnoreCase)
-                //                               .Where(g => g.Count() > 1)
-                //                               .Select(g => g.Key)
-                //                               .ToList();
-
-                //    if (duplicateOriginalFilenames.Any())
-                //    {
-                //        var multiFileDuplicates = new List<string>();
-
-                //        // For each duplicate, check if it belongs to a multi-file dataset.
-                //        foreach (var dupName in duplicateOriginalFilenames)
-                //        {
-                //            var rule = IcRules.ReturnFilesetRuleForExtension(Path.GetExtension(dupName).TrimStart('.'));
-                //            if (rule != null && rule.RequiredExtensions.Count > 1)
-                //            {
-                //                multiFileDuplicates.Add(dupName);
-                //            }
-                //        }
-
-                //        if (multiFileDuplicates.Any())
-                //        {
-                //            _currentEmailTestResult = namedTests.returnNewTestResult("GIS_Root_Email_Load", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
-
-                //            var duplicateTest = namedTests.returnNewTestResult("GIS_DuplicateFilenamesInAttachments", emailToProcess.Emailid, IcTestResult.TestType.Deliverable);
-                //            duplicateTest.Passed = false;
-                //            duplicateTest.AddComment($"The submission could not be processed because it contains multiple multi-file datasets with the same filename(s): {string.Join(", ", multiFileDuplicates.Distinct())}");
-
-                //            _currentEmailTestResult.AddSubordinateTestResult(duplicateTest);
-
-                //            ShowTestResultWindow(_currentEmailTestResult);
-                //            StatusMessage = "Processing failed: Duplicate filenames found in attachments.";
-                //            IsEmailActionEnabled = true; // Allow user to Reject/Skip
-                //            UpdateEmailInfo(emailToProcess, new EmailClassificationResult(), false, EmailType.Unknown);
-                //            return; // Stop processing this email
-                //        }
-                //    }
-                //}
-                // --- END OF NEW DUPLICATE FILENAME CHECK ---
-
-                if (emailToProcess == null)
-                {
-                    shouldAutoAdvance = true; // Mark for advancement
-                    ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show($"Could not retrieve the email: '{currentEmailSummary.Subject}'. It will be skipped.", "Email Retrieval Error");
-                    return; // Exit the try block; the finally block will handle the rest.
-                }
-
-                var classification = new EmailClassifierService(IcRules, Log).ClassifyEmail(emailToProcess);
-                _currentClassification = classification;
-
-                EmailType finalEmailType = classification.Type;
-                if (classification.Type == EmailType.Unknown || classification.Type == EmailType.EmptySubjectline)
-                {
-                    var (wasSelected, selectedType) = await RequestManualEmailClassification(emailToProcess, _currentIcSetting, outlookApp);
-                    if (wasSelected)
-                    {
-                        finalEmailType = selectedType;
-                        classification.WasManuallyClassified = true;
-                    }
-                    else
-                    {
-                        shouldAutoAdvance = true; // User canceled
-                        return; // Exit try block
-                    }
-                }
-
-                UpdateEmailInfo(emailToProcess, classification, classification.WasManuallyClassified, finalEmailType);
-
-                _currentSiteLocation = await GetSiteCoordinatesFromNjemsAsync(CurrentPrefId);
-
-                var processingService = new EmailProcessingService(IcRules, namedTests, Log);
-                EmailProcessingResult processingResult = await processingService.ProcessEmailAsync(outlookApp, emailToProcess, classification, SelectedIcType.Name, folderPath, storeName, classification.WasManuallyClassified, finalEmailType, GetSiteCoordinatesFromPostgreAsync);
-
-                _currentEmailTestResult = processingResult.TestResult;
-                _currentAttachmentAnalysis = processingResult.AttachmentAnalysis;
-               // _currentFilesetTestResults = processingResult.FilesetTestResults;
-
-                if (processingResult.TestResult == null)
-                {
-                    shouldAutoAdvance = true;
-                    return;
-                }
-
-                // If the result did not pass validation, show the results window and enable the
-                // action buttons so the user can make a manual decision.
-                if (_currentEmailTestResult.CumulativeAction.ResultAction != TestActionResponse.Pass)
-                {
-                    ShowTestResultWindow(_currentEmailTestResult);
-                    StatusMessage = $"Review required: {_currentEmailTestResult.Comments.FirstOrDefault()}";
-                    IsEmailActionEnabled = true; // Enable Save/Skip/Reject buttons
-                    return; // Stop processing and wait for the user to click a button
-                }
-
-                // If we reach here, the result was a clean Pass, so we load the UI for review.
-                if (processingResult.ShapeItems?.Any() == true)
-                {
-                    _allProcessedShapes = processingResult.ShapeItems;
-                }
-
-                if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
-                {
-                    await RunOnUIThread(() =>
-                    {
-                        foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
-                        {
-                            var fsVM = new FileSetViewModel(fs)
-                            {
-                                UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase)
-                            };
-                            _foundFileSets.Add(fsVM);
-                        }
-                    });
-                }
-
-                UpdateFileSetCounts();
-                await RefreshShapeListsAndMap();
-                await ZoomToAllAndSiteAsync();
-
-                StatusMessage = "Ready for review.";
-                IsEmailActionEnabled = true;
-
-
-
-                //switch (_currentEmailTestResult.CumulativeAction.ResultAction)
-                //{
-                //    case TestActionResponse.Pass:
-                //        // 1. Store all shapes in our new master list.
-                //        if (processingResult.ShapeItems?.Any() == true)
-                //        {
-                //            _allProcessedShapes = processingResult.ShapeItems;
-                //        }
-
-                //        // 2. Set up the FileSetViewModels and their default values.
-                //        if (processingResult.AttachmentAnalysis?.IdentifiedFileSets?.Any() == true)
-                //        {
-                //            await RunOnUIThread(() =>
-                //            {
-                //                foreach (var fs in processingResult.AttachmentAnalysis.IdentifiedFileSets)
-                //                {
-                //                    var fsVM = new FileSetViewModel(fs);
-                //                    // Set default "UseFilter" state: true for DWG, false for shapefiles.
-                //                    fsVM.UseFilter = !fs.filesetType.Equals("shapefile", StringComparison.OrdinalIgnoreCase);
-                //                    _foundFileSets.Add(fsVM);
-                //                }
-                //            });
-                //        }
-
-                //        // 3. Calculate and populate the counts for each fileset.
-                //        UpdateFileSetCounts();
-
-                //        //var shapesByFile = _allProcessedShapes.GroupBy(s => s.SourceFile);
-                //        //foreach (var group in shapesByFile)
-                //        //{
-                //        //    var fileSetVM = _foundFileSets.FirstOrDefault(fs => fs.FileName == group.Key);
-                //        //    if (fileSetVM != null)
-                //        //    {
-                //        //        fileSetVM.TotalFeatureCount = group.Count();
-                //        //        fileSetVM.FilteredCount = group.Count(s => s.IsAutoSelected);
-                //        //        fileSetVM.ValidFeatureCount = group.Count(s => s.IsValid);
-                //        //        fileSetVM.InvalidFeatureCount = group.Count(s => !s.IsValid);
-                //        //    }
-                //        //}
-
-                //        // 4. Call our new central refresh method. This single call now handles
-                //        //    populating the UI lists and redrawing the map based on the checkbox states.
-                //        await RefreshShapeListsAndMap();
-                //        await ZoomToAllAndSiteAsync();
-
-                //        // 5. Set the final UI state.
-                //        StatusMessage = "Ready for review.";
-                //        IsEmailActionEnabled = true;
-                //        break;
-
-                //    case TestActionResponse.Note:
-                //    case TestActionResponse.Manual:
-                //    case TestActionResponse.Fail:
-                //    default:
-                //        // Any non-passing result will auto-advance to the next email
-                //        shouldAutoAdvance = true;
-                //        UpdateQueueStats(_currentEmailTestResult); // Update stats based on failure type
-                //        ShowTestResultWindow(_currentEmailTestResult);
-                //        return;
-                //}
-            }
-            catch (Exception ex)
-            {
-                shouldAutoAdvance = true; // Also advance on unexpected errors
-                Log.RecordError($"An unexpected error occurred while processing email ID {currentEmailSummary.Emailid}", ex, "ProcessSelectedQueueAsync");
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("An unexpected error occurred. The application will advance to the next email.", "Processing Error");
-            }
-            finally
-            {
-                //CleanupTempFolder(emailToProcess);
-                if (emailToProcess != null)
-                {
-                    _pathForNextCleanup = emailToProcess.TempFolderPath;
-                }
-                if (SelectedIcType != null)
-                {
-                    SelectedIcType.EmailCount = emailsToProcess.Count;
-                }
-
-                if (outlookApp != null)
-                {
-                    Marshal.ReleaseComObject(outlookApp);
-                }
-
-                // The application only advances if it was explicitly marked for auto-advancement.
-                if (shouldAutoAdvance)
-                {
-                    SelectedIcType.FailedCount++;
-                    if (emailsToProcess.Any() && emailsToProcess.First() == currentEmailSummary)
-                    {
-                        emailsToProcess.RemoveAt(0);
-                    }
-                    await ProcessNextEmail();
-                }
-            }
-        }
-
+        
         /// <summary>
         /// A helper method that simply calls the main processing logic.
         /// This will be triggered by the user action buttons.
@@ -643,7 +398,7 @@ namespace IC_Loader_Pro
             await ProcessSelectedQueueAsync();
         }
 
-        private async Task<(bool wasSelected, EmailType selectedType)> RequestManualEmailClassification(EmailItem email, IcGisTypeSetting icSetting, Outlook.Application outlookApp)
+        private async Task<(UserChoice choice, EmailType selectedType)> RequestManualEmailClassification(EmailItem email, IcGisTypeSetting icSetting, Outlook.Application outlookApp)
         {
             var popupViewModel = new ViewModels.ManualEmailClassificationViewModel(email, icSetting, outlookApp);
             var popupWindow = new Views.ManualEmailClassificationWindow
@@ -652,11 +407,9 @@ namespace IC_Loader_Pro
                 Owner = FrameworkApplication.Current.MainWindow
             };
 
-            if (popupWindow.ShowDialog() == true)
-            {
-                return (true, popupViewModel.SelectedEmailType);
-            }
-            return (false, EmailType.Unknown);
+            popupWindow.ShowDialog();
+
+            return (popupWindow.Result, popupViewModel.SelectedEmailType);
         }
 
         private void UpdateEmailInfo(EmailItem email, EmailClassificationResult classification, bool wasManuallySelected, EmailType finalType)
