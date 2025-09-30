@@ -1157,7 +1157,7 @@ namespace IC_Loader_Pro
                     IsEmailActionEnabled = true; // Re-enable the UI
                                                  // Important: We need to reverse the database changes here or provide a manual way to clean up.
                                                  // For now, we will stop the process.
-                    Log.RecordMessage($"User canceled email send for deliverable {newDelId}. The database record was created but the email was not moved. Manual cleanup may be required.",BisLogMessageType.FatalError);
+                    Log.RecordMessage($"User canceled email send for deliverable {newDelId}. The database record was created but the email was not moved. Manual cleanup may be required.",BisLogMessageType.Warning);
                     return; // ABORT the finalization
                 }
 

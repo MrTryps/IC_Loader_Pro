@@ -83,14 +83,11 @@ namespace IC_Loader_Pro.ViewModels
         /// <param name="position">The character index (caret position) where the text should be inserted.</param>
         public void InsertTemplateText(string textToInsert, int position)
         {
-            if (string.IsNullOrEmpty(HtmlBody))
+            if (position < 0 || position > (HtmlBody?.Length ?? 0))
             {
-                HtmlBody = textToInsert;
+                position = HtmlBody?.Length ?? 0;
             }
-            else
-            {
-                HtmlBody = HtmlBody.Insert(position, textToInsert);
-            }
+            HtmlBody = HtmlBody.Insert(position, textToInsert);
         }
 
         private void OnAddAttachment()
