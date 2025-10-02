@@ -277,7 +277,7 @@ namespace IC_Loader_Pro.Services
             try
             {
                 // 1. Create a dedicated database tool that connects to the correct cluster for the shape_info table.
-                var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
+                var shapeInfoDbTool = BisDbNpgsql.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
                 if (shapeInfoDbTool == null)
                 {
                     Log.RecordError("Failed to create a database connection for the shape_info table.", null, methodName);
@@ -416,7 +416,7 @@ namespace IC_Loader_Pro.Services
             try
             {
                 // 3. Create a dedicated database tool that connects to the correct cluster.
-                var shapeInfoDbTool = BIS_DB_PostGre.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
+                var shapeInfoDbTool = BisDbNpgsql.CreateFromRule(shapeInfoTableRule.WorkSpaceRule, _log);
                 if (shapeInfoDbTool == null)
                 {
                     Log.RecordError("Failed to create a database connection for the shape_info table.", null, methodName);

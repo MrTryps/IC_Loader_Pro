@@ -19,7 +19,7 @@ namespace IC_Loader_Pro
         private static Module1 _this = null;
         private static BIS_Log _log;
         private static IC_Rules _icRules = null;
-        private static BIS_DB_PostGre _postGreTool = null;
+        private static BisDbNpgsql _postGreTool = null;
         private static BisDbNjems _njemsTool;
         private static BisDbCompass _compassTool;
         private static BisDbAccess _accessTool;
@@ -30,13 +30,14 @@ namespace IC_Loader_Pro
         public static Module1 Current => _this;
         public static BIS_Log Log => _log;
         public static IC_Rules IcRules => _icRules;
-        public static BIS_DB_PostGre PostGreTool => _postGreTool;
+        public static BisDbNpgsql PostGreTool => _postGreTool;
         public static BisDbNjems NjemsTool => _njemsTool;
         public static BisDbCompass CompassTool => _compassTool;
         public static BisDbAccess AccessTool => _accessTool;
         public static Bis_Regex RegexTool => _regexTool;
         public static BisFileTools FileTool => _fileTool;
         public static DateTime BuildDate { get; private set; }
+        private static bool _initializationFailed = false;
 
         /// <summary>
         /// The required Well-Known ID (WKID) for the project's coordinate system.
@@ -59,7 +60,8 @@ namespace IC_Loader_Pro
         /// <returns>A Task that represents the initialization process.</returns>
         protected override bool Initialize()
         {
-            _this = this;
+            if (_initializationFailed) return false;
+            _this = this;        
 
             try
             {
@@ -74,8 +76,6 @@ namespace IC_Loader_Pro
             catch (Exception ex)
             {
                 BuildDate = DateTime.MinValue;
-                // We can't use the main logger here because it might not be initialized yet.
-                // This will be a silent failure, which is acceptable for a non-critical feature.
             }
 
 
@@ -89,7 +89,7 @@ namespace IC_Loader_Pro
                 }
                 _fileTool = new BisFileTools(_log);
                 _regexTool = new Bis_Regex(_log);
-                _postGreTool = new BIS_DB_PostGre(_log);
+                _postGreTool = new BisDbNpgsql(_log);
                 _njemsTool = new BisDbNjems(_log);
                 _compassTool = new BisDbCompass(_log);
                 _accessTool = new BisDbAccess(_log);
@@ -98,6 +98,7 @@ namespace IC_Loader_Pro
             }
             catch (Exception ex)
             {
+                _initializationFailed = true;
                 // Create a temporary, failsafe logger just in case the main one failed to initialize.
                 var tempLog = _log ?? new BIS_Log("IC_Loader_Pro_Failsafe");
                 string errorMessage = "A critical error occurred during IC Loader Pro initialization (likely a missing database driver). The add-in will be disabled for this session.";

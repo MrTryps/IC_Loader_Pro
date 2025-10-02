@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net6.0-windows7.0</TargetFramework>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <RuntimeIdentifier>win10-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -47,7 +47,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Graph" Version="5.83.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.73.1" />
-    <PackageReference Include="System.Data.Odbc" Version="6.0.1" />
+    <PackageReference Include="Npgsql" Version="8.0.7" />
+    <PackageReference Include="System.Data.Odbc" Version="9.0.5" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="ArcGIS.Desktop.Framework">
@@ -136,6 +138,11 @@
       <_Parameter1>BuildDate</_Parameter1>
       <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2>
     </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="libs\System.Data.Odbc.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets" Condition="Exists('C:\Program Files\ArcGIS\Pro\bin\Esri.ProApp.SDK.Desktop.targets') AND !Exists('Esri.ArcGISPro.Extensions.targets')" />
 </Project>
