@@ -1,44 +1,24 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ArcGIS defaultAssembly="IC_Loader_Pro.dll" defaultNamespace="IC_Loader_Pro" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
-  <AddInInfo id="{7969ded4-caa1-462c-aba5-b5b886fe9a19}" version="1.0" desktopVersion="3.2.49743">
+  <AddInInfo id="{7969ded4-caa1-462c-aba5-b5b886fe9a19}" version="1.0" desktopVersion="3.4">
     <Name>IC_Loader_Pro</Name>
     <Description>IC_Loader_Pro description</Description>
     <Image>Images\AddinDesktop32.png</Image>
     <Author>mrmoore</Author>
     <Company>NJDEP</Company>
     <Date>4/24/2025 3:57:00 PM</Date>
-    <Subject>Framework</Subject>
-  </AddInInfo>
+    <Subject>Framework</Subject>   
+  </AddInInfo> 
+  <dependencies>
+        <dependency name="IC_Promote_Module"/>
+      </dependencies>
   <modules>
     <insertModule id="IC_Loader_Pro_Module" className="Module1" autoLoad="false" caption="Module1">
 
-      <!--#if DEBUG
-      <tabs>
-        <tab id="IC_Loader_Pro_DebugTab" caption="IC Loader (Debug)" keytip="D">
-          <group refID="IC_Loader_Pro_Group_Debug" />
-        </tab>
-      </tabs>
-      #endif-->
-
       <groups>
-        <!--#if DEBUG
-        <group id="IC_Loader_Pro_Group_Debug" caption="IC Tools (Debug)" appearsOnAddInTab="false">
+        <group id="IC_Loader" caption="IC Loader" >
           <button refID="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" size="large" />
         </group>
-        #else-->
-        <group id="IC_Loader_Pro_Group_Primary"
-               caption="IC Loader"
-               appearsOnTab="IC_Group"
-               condition="custom_tab_exists_condition">
-          <button refID="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" size="large" />
-        </group>
-        <group id="IC_Loader_Pro_Group_Fallback"
-               caption="IC_Tools_2025"
-               appearsOnAddInTab="true"
-               >
-          <button refID="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton" size="large" />
-        </group>
-        <!--#endif-->
       </groups>
       <controls>
         <tool id="IC_Loader_Pro_SelectShapeTool"
@@ -49,7 +29,7 @@
           <tooltip heading="Tooltip heading">Tooltip text</tooltip>
         </tool>
         <button id="IC_Loader_Pro_Dockpane_IC_Loader_ShowButton"
-                caption="Show Dockpane _IC_Loader"
+                caption="Show Dockpane IC_Loader"
                 className="Dockpane_IC_Loader_ShowButton"
                 loadOnClick="true"
                 smallImage="Images\IC_LoadTool_16.png"
@@ -71,11 +51,15 @@
         </dockPane>
       </dockPanes>
     </insertModule>
+    <updateModule refID="IC_Promote_Module">
+      <tabs>
+        <updateTab refID="IC_Group">
+          <insertGroup refID="IC_Loader"/>
+        </updateTab>
+      </tabs>
+    </updateModule>
   </modules>
 
   <conditions>
-    <insertCondition id="custom_tab_exists_condition">
-      <state id="custom_tab_exists_state" />
-    </insertCondition>
   </conditions>
 </ArcGIS>
